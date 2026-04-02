@@ -487,6 +487,13 @@ class ConfigLoader:
             "srtp_secure": "srtp_secure",
             "dest_uri": "dest_uri",
             "log_level": "log_level",
+            "bye": "bye",
+            "wait_bye": "wait_bye",
+            "reinvite_by": "reinvite_by",
+            "reinvite_delay": "reinvite_delay",
+            "options_ping": "options_ping",
+            "options_auto_reply": "options_auto_reply",
+            "options_tolerance": "options_tolerance",
         }
 
         for cfg_key, arg_attr in flat_map.items():
@@ -614,6 +621,26 @@ def add_common_args(parser: argparse.ArgumentParser):
                         help="Max seconds to wait for incoming call (default: 30)")
     parser.add_argument("--tls-wait", type=int, default=None,
                         help="Max seconds to wait for TLS connection (default: 10)")
+
+    # BYE control
+    parser.add_argument("--bye", choices=["uac", "uas", "none"],
+                        default=None, help="Who sends BYE (default: depends on mode)")
+    parser.add_argument("--wait-bye", type=int, default=None,
+                        help="Timeout waiting for BYE from remote (default: 30)")
+
+    # re-INVITE
+    parser.add_argument("--reinvite-by", choices=["uac", "uas"],
+                        default=None, help="Who sends re-INVITE")
+    parser.add_argument("--reinvite-delay", default=None,
+                        help="Delay(s) in seconds after media, comma-separated (e.g. 3 or 3,7,12)")
+
+    # In-dialog OPTIONS ping
+    parser.add_argument("--options-ping", type=int, default=None,
+                        help="Send OPTIONS every N seconds (also enables auto-reply)")
+    parser.add_argument("--options-auto-reply", action="store_true",
+                        help="Auto-reply 200 OK to incoming OPTIONS (no send)")
+    parser.add_argument("--options-tolerance", type=float, default=None,
+                        help="Min %% of successful OPTIONS responses (default: 90)")
 
     # Header checks
     parser.add_argument("--set-header", action="append", metavar="NAME: VALUE",
@@ -804,6 +831,8 @@ _ARG_DEFAULTS = {
     "tolerance": 90.0,
     "wait_timeout": 30,
     "tls_wait": 10,
+    "wait_bye": 30,
+    "options_tolerance": 90.0,
 }
 
 
@@ -815,6 +844,34 @@ def _apply_arg_defaults(args: argparse.Namespace):
     for attr, default in _ARG_DEFAULTS.items():
         if getattr(args, attr, None) is None:
             setattr(args, attr, default)
+
+    # Parse reinvite_delay string into list of floats
+    if getattr(args, "reinvite_delay", None) is not None:
+        raw = str(args.reinvite_delay)
+        try:
+            args.reinvite_delays = [float(x.strip()) for x in raw.split(",")]
+        except ValueError:
+            print(f"ERROR: invalid --reinvite-delay value: {raw}", file=sys.stderr)
+            safe_exit(1)
+    else:
+        args.reinvite_delays = []
+
+    # Validate: reinvite-delay requires reinvite-by and vice versa
+    has_delay = len(args.reinvite_delays) > 0
+    has_by = getattr(args, "reinvite_by", None) is not None
+    if has_delay and not has_by:
+        print("ERROR: --reinvite-delay requires --reinvite-by", file=sys.stderr)
+        safe_exit(1)
+    if has_by and not has_delay:
+        print("ERROR: --reinvite-by requires --reinvite-delay", file=sys.stderr)
+        safe_exit(1)
+
+    # Warn if any reinvite delay >= duration
+    duration = getattr(args, "duration", 10)
+    for d in args.reinvite_delays:
+        if d >= duration:
+            print(f"WARNING: --reinvite-delay={d} >= --duration={duration}, "
+                  f"re-INVITE may not execute", file=sys.stderr)
 
 
 def load_config_and_args(description: str):
