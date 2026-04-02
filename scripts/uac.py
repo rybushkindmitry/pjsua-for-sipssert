@@ -23,7 +23,10 @@ from common import (
     load_config_and_args,
     init_endpoint,
     configure_srtp,
-    configure_tls,
+    create_transport,
+    get_transport,
+    get_transport_param,
+    get_default_port,
     safe_shutdown,
     safe_exit,
     print_echo_results,
@@ -159,21 +162,17 @@ def main():
         ep = init_endpoint(args)
         app.ep = ep
 
-        # Create TLS transport (client role — port 0 means ephemeral)
-        tp_cfg = pj.TransportConfig()
-        tp_cfg.port = getattr(args, "port", 0)
-        if getattr(args, "bind_ip", ""):
-            tp_cfg.boundAddress = args.bind_ip
-        configure_tls(tp_cfg, args)
-
-        transport_id = ep.transportCreate(pj.PJSIP_TRANSPORT_TLS, tp_cfg)
-        print(f"TLS transport created (client role, port={tp_cfg.port}).", file=sys.stderr)
+        # Create transport (client role — port 0 means ephemeral)
+        transport_id = create_transport(ep, args, port=getattr(args, "port", 0))
+        t = get_transport(args)
+        print(f"{t.upper()} transport created (client role).", file=sys.stderr)
 
         # Create account
         acfg = pj.AccountConfig()
-        proxy = getattr(args, "proxy", "") or "127.0.0.1:5061"
+        proxy = getattr(args, "proxy", "") or f"127.0.0.1:{get_default_port(args)}"
         bind_addr = getattr(args, "bind_ip", "") or "0.0.0.0"
-        acfg.idUri = f"sip:uac@{bind_addr};transport=tls"
+        tp_param = get_transport_param(args)
+        acfg.idUri = f"sip:uac@{bind_addr}{tp_param}"
         acfg.regConfig.registrarUri = ""
         acfg.regConfig.registerOnAdd = False
         acfg.sipConfig.transportId = transport_id
@@ -191,7 +190,7 @@ def main():
         # Build destination URI
         dest_uri = getattr(args, "dest_uri", "")
         if not dest_uri:
-            dest_uri = f"sip:test@{proxy};transport=tls"
+            dest_uri = f"sip:test@{proxy}{tp_param}"
 
         print(f"Making call to {dest_uri}...", file=sys.stderr)
 

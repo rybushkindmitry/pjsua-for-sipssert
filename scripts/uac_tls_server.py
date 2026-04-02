@@ -30,7 +30,7 @@ from common import (
     add_common_args,
     init_endpoint,
     configure_srtp,
-    configure_tls,
+    create_transport,
     safe_shutdown,
     safe_exit,
     print_echo_results,
@@ -232,13 +232,9 @@ def main():
         app.ep = ep
 
         # Create TLS transport (TLS server role — listen on listen_port)
-        tp_cfg = pj.TransportConfig()
-        tp_cfg.port = args.listen_port
-        if getattr(args, "bind_ip", ""):
-            tp_cfg.boundAddress = args.bind_ip
-        configure_tls(tp_cfg, args)
-
-        transport_id = ep.transportCreate(pj.PJSIP_TRANSPORT_TLS, tp_cfg)
+        # TLS is mandatory for this mode (TLS role decoupling)
+        args.transport = "tls"
+        transport_id = create_transport(ep, args, port=args.listen_port)
         app.transport_id = transport_id
         print(f"TLS server: listening on port {args.listen_port}", file=sys.stderr)
 

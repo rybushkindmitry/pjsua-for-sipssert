@@ -25,7 +25,10 @@ from common import (
     load_config_and_args,
     init_endpoint,
     configure_srtp,
-    configure_tls,
+    create_transport,
+    get_transport,
+    get_transport_param,
+    get_default_port,
     safe_shutdown,
     safe_exit,
     print_echo_results,
@@ -162,21 +165,17 @@ def main():
     ep = init_endpoint(args)
     app.ep = ep
 
-    # Create TLS transport (listener / server role)
-    tp_cfg = pj.TransportConfig()
-    port = args.port or 5061
-    tp_cfg.port = port
-    if getattr(args, "bind_ip", ""):
-        tp_cfg.boundAddress = args.bind_ip
-    configure_tls(tp_cfg, args)
+    # Create transport (listener / server role)
+    port = args.port or get_default_port(args)
+    transport_id = create_transport(ep, args, port=port)
+    t = get_transport(args)
+    print(f"{t.upper()} server: listening on port {port}", file=sys.stderr)
 
-    transport_id = ep.transportCreate(pj.PJSIP_TRANSPORT_TLS, tp_cfg)
-    print(f"TLS server: listening on port {port}", file=sys.stderr)
-
-    # Create account bound to TLS transport
+    # Create account bound to transport
     acfg = pj.AccountConfig()
     bind_addr = getattr(args, "bind_ip", "") or "0.0.0.0"
-    acfg.idUri = f"sip:uas@{bind_addr}:{port};transport=tls"
+    tp_param = get_transport_param(args)
+    acfg.idUri = f"sip:uas@{bind_addr}:{port}{tp_param}"
     acfg.regConfig.registrarUri = ""
     acfg.regConfig.registerOnAdd = False
     acfg.sipConfig.transportId = transport_id

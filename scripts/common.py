@@ -474,6 +474,7 @@ class ConfigLoader:
         # Flat key -> args attribute mapping
         flat_map = {
             "mode": "mode",
+            "transport": "transport",
             "proxy": "proxy",
             "port": "port",
             "ip": "bind_ip",
@@ -580,9 +581,13 @@ def add_common_args(parser: argparse.ArgumentParser):
     parser.add_argument("--dest-uri", default="",
                         help="Destination SIP URI")
 
-    # TLS
+    # Transport
+    parser.add_argument("--transport", choices=["tls", "tcp", "udp"],
+                        default=None, help="SIP transport: tls (default), tcp, udp")
     parser.add_argument("--tls", action="store_true",
-                        help="Enable TLS transport (no-op: TLS is always used; kept for compatibility)")
+                        help="Use TLS transport (same as --transport=tls, kept for compatibility)")
+
+    # TLS
     parser.add_argument("--tls-ca-file", default="",
                         help="CA certificate file")
     parser.add_argument("--tls-cert-file", default="",
@@ -645,6 +650,50 @@ SRTP_MAP = {
     "optional": pj.PJMEDIA_SRTP_OPTIONAL,
     "mandatory": pj.PJMEDIA_SRTP_MANDATORY,
 }
+
+TRANSPORT_MAP = {
+    "tls": pj.PJSIP_TRANSPORT_TLS,
+    "tcp": pj.PJSIP_TRANSPORT_TCP,
+    "udp": pj.PJSIP_TRANSPORT_UDP,
+}
+
+
+def get_transport(args) -> str:
+    """Return effective transport type from args."""
+    return getattr(args, "transport", "tls") or "tls"
+
+
+def get_transport_param(args) -> str:
+    """Return ';transport=xxx' URI parameter, empty for UDP."""
+    t = get_transport(args)
+    if t == "udp":
+        return ""
+    return f";transport={t}"
+
+
+def get_default_port(args) -> int:
+    """Return default SIP port for the transport type."""
+    t = get_transport(args)
+    return 5061 if t == "tls" else 5060
+
+
+def create_transport(ep, args, port=None):
+    """Create SIP transport based on --transport arg. Returns transport_id.
+
+    port=0 means ephemeral (useful for UAC). port=None uses args.port or default.
+    """
+    t = get_transport(args)
+    tp_cfg = pj.TransportConfig()
+    if port is not None:
+        tp_cfg.port = port
+    else:
+        tp_cfg.port = getattr(args, "port", 0) or get_default_port(args)
+    if getattr(args, "bind_ip", ""):
+        tp_cfg.boundAddress = args.bind_ip
+    if t == "tls":
+        configure_tls(tp_cfg, args)
+    transport_id = ep.transportCreate(TRANSPORT_MAP[t], tp_cfg)
+    return transport_id
 
 
 def configure_srtp(acfg: pj.AccountConfig, srtp: str, srtp_secure: int):
@@ -748,6 +797,7 @@ def print_echo_results(validator: EchoValidatorPort, tolerance: float) -> bool:
 # ---------------------------------------------------------------------------
 
 _ARG_DEFAULTS = {
+    "transport": "tls",
     "srtp": "off",
     "srtp_secure": 0,
     "duration": 10,
@@ -759,6 +809,9 @@ _ARG_DEFAULTS = {
 
 def _apply_arg_defaults(args: argparse.Namespace):
     """Fill in any args still at None with their real default values."""
+    # --tls flag overrides --transport if transport not explicitly set
+    if getattr(args, "tls", False) and getattr(args, "transport", None) is None:
+        args.transport = "tls"
     for attr, default in _ARG_DEFAULTS.items():
         if getattr(args, attr, None) is None:
             setattr(args, attr, default)

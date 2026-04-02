@@ -1,0 +1,29 @@
+tasks:
+  - name: uas
+    image: pjsua-test
+    daemon: true
+    args:
+      - "--mode=uas"
+      - "--transport=udp"
+      - "--port=15111"
+      - "--rtp-port=22000"
+      - "--duration=10"
+      - "--tolerance=0"
+      - "--set-header=X-Reply: udp-ok"
+      - "--expect-header=X-Test"
+      - "--expect-header-value=X-Test: udp-hello"
+
+  - name: uac
+    image: pjsua-test
+    require:
+      - { started: uas }
+    args:
+      - "--mode=uac"
+      - "--transport=udp"
+      - "--proxy=127.0.0.1:15111"
+      - "--rtp-port=23000"
+      - "--duration=5"
+      - "--tolerance=0"
+      - "--set-header=X-Test: udp-hello"
+      - "--expect-header=X-Reply"
+      - "--expect-header-value=X-Reply: udp-ok"
