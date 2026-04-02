@@ -45,8 +45,12 @@ headers:
     - "X-Removed"
   expect_value:
     - "X-Custom: value"
-  expect_regex:
+  expect_value_regex:
     - "X-Session-Id: ^test-.*"
+  expect_name_regex:
+    - "^X-Custom-.*"
+  expect_not_regex:
+    - "^X-Internal-.*"
 ```
 
 ### Приоритет
@@ -89,10 +93,18 @@ CLI:
 
 | CLI-флаг | Конфиг-ключ | Что проверяет |
 |---|---|---|
-| `--expect-header="Name"` | `headers.expect` | Хедер присутствует |
-| `--expect-no-header="Name"` | `headers.expect_not` | Хедер отсутствует |
+| `--expect-header="Name"` | `headers.expect` | Хедер с таким именем присутствует |
+| `--expect-header-regex="Pattern"` | `headers.expect_name_regex` | Есть хедер, имя которого матчит regex |
+| `--expect-no-header="Name"` | `headers.expect_not` | Хедер с таким именем отсутствует |
+| `--expect-no-header-regex="Pattern"` | `headers.expect_not_regex` | Нет хедеров, имя которых матчит regex |
 | `--expect-header-value="Name: value"` | `headers.expect_value` | Точное совпадение значения |
-| `--expect-header-regex="Name: pattern"` | `headers.expect_regex` | Regex-совпадение значения |
+| `--expect-header-value-regex="Name: pattern"` | `headers.expect_value_regex` | Regex-совпадение значения |
+
+Примеры проверки по шаблону имени:
+```
+--expect-header-regex="^X-Custom-.*"          # есть хотя бы один хедер X-Custom-*
+--expect-no-header-regex="^X-Internal-.*"     # нет ни одного хедера X-Internal-*
+```
 
 Все флаги повторяемые (`action="append"` в argparse).
 
@@ -102,10 +114,12 @@ CLI:
 ==================================================
 Header Validation Results:
   [PASS] expect: X-Session-Id — found
+  [PASS] expect_name_regex: ^X-Custom-.* — matched X-Custom-Foo
   [PASS] expect_not: X-Removed — not found
+  [PASS] expect_not_regex: ^X-Internal-.* — no matching headers
   [FAIL] expect_value: X-Custom — expected "exact", got "other"
-  [PASS] expect_regex: X-Session-Id — "test-123" matches ^test-.*
-  RESULT: FAIL (1/4 checks failed)
+  [PASS] expect_value_regex: X-Session-Id — "test-123" matches ^test-.*
+  RESULT: FAIL (1/6 checks failed)
 ==================================================
 ```
 
