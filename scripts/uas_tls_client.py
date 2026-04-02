@@ -223,13 +223,7 @@ class TlsClientUas:
         }
         acfg.mediaConfig.srtpUse = srtp_map.get(self.args.srtp,
                                                   pj.PJMEDIA_SRTP_DISABLED)
-        srtp_secure_map = {
-            0: pj.PJMEDIA_SRTP_NO_SECURE_SIGNALING,
-            1: pj.PJMEDIA_SRTP_REQUIRE_SECURE_TRANSPORT,
-            2: pj.PJMEDIA_SRTP_REQUIRE_SECURE_END_TO_END,
-        }
-        acfg.mediaConfig.srtpSecure = srtp_secure_map.get(
-            self.args.srtp_secure, pj.PJMEDIA_SRTP_NO_SECURE_SIGNALING)
+        acfg.mediaConfig.srtpSecureSignaling = self.args.srtp_secure
 
         self.account = UasAccount(self)
         self.account.create(acfg)

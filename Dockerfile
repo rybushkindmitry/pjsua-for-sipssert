@@ -11,6 +11,10 @@ RUN apk add --no-cache \
     && printf 'pcm.!default { type null }\nctl.!default { type null }\n' \
         > /usr/share/alsa/alsa.conf
 
+# Suppress JACK errors (no audio server in Docker)
+ENV JACK_NO_START_SERVER=1
+ENV JACK_NO_AUDIO_RESERVATION=1
+
 COPY entrypoint.sh /entrypoint.sh
 COPY scripts/ /scripts/
 RUN chmod +x /entrypoint.sh
