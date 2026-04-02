@@ -38,19 +38,23 @@ tls:
 headers:
   set:
     - "X-Session-Id: test-123"
-    - "X-Custom: value"
+    - "X-Route: route-1"
+    - "X-Route: route-2"
   expect:
     - "X-Session-Id"
   expect_not:
     - "X-Removed"
-  expect_value:
-    - "X-Custom: value"
-  expect_value_regex:
-    - "X-Session-Id: ^test-.*"
   expect_name_regex:
     - "^X-Custom-.*"
   expect_not_regex:
     - "^X-Internal-.*"
+  expect_value:
+    - "X-Session-Id: test-123"
+    - "X-Route[0]: route-1"
+  expect_value_regex:
+    - "X-Session-Id: ^test-.*"
+  expect_count:
+    - "X-Route: 2"
 ```
 
 ### Приоритет
@@ -99,6 +103,45 @@ CLI:
 | `--expect-no-header-regex="Pattern"` | `headers.expect_not_regex` | Нет хедеров, имя которых матчит regex |
 | `--expect-header-value="Name: value"` | `headers.expect_value` | Точное совпадение значения |
 | `--expect-header-value-regex="Name: pattern"` | `headers.expect_value_regex` | Regex-совпадение значения |
+| `--expect-header-count="Name: N"` | `headers.expect_count` | Количество хедеров с данным именем |
+
+Все флаги повторяемые (`action="append"` в argparse).
+
+### Множественные хедеры
+
+SIP допускает несколько хедеров с одинаковым именем (Via, Record-Route, кастомные).
+
+**Установка** — повторить в `set`:
+```yaml
+headers:
+  set:
+    - "X-Route: route-1"
+    - "X-Route: route-2"
+```
+
+**Проверка наличия/отсутствия** — работает с множественными хедерами:
+- `expect "Via"` — PASS если есть хотя бы один Via
+- `expect_not "X-Debug"` — PASS только если нет ни одного X-Debug
+
+**Проверка количества** (`expect_count`):
+```
+--expect-header-count="Via: 2"      # ровно 2
+--expect-header-count="Via: 2+"     # 2 или больше
+--expect-header-count="Via: 1-3"    # от 1 до 3
+```
+
+**Индексация** — проверка значения конкретного хедера по позиции:
+```
+--expect-header-value="Via[0]: SIP/2.0/TLS 10.0.0.1"    # первый Via
+--expect-header-value="Via[1]: SIP/2.0/TLS 10.0.0.2"    # второй Via
+--expect-header-value="Via[-1]: SIP/2.0/TLS 10.0.0.3"   # последний Via
+--expect-header-value="Via: SIP/2.0/TLS"                 # любой Via (без индекса)
+```
+
+Аналогично для regex:
+```
+--expect-header-value-regex="Via[0]: ^SIP/2.0/TLS.*"
+```
 
 Примеры проверки по шаблону имени:
 ```
@@ -106,7 +149,18 @@ CLI:
 --expect-no-header-regex="^X-Internal-.*"     # нет ни одного хедера X-Internal-*
 ```
 
-Все флаги повторяемые (`action="append"` в argparse).
+В YAML-конфиге:
+```yaml
+headers:
+  expect_value:
+    - "Via[0]: SIP/2.0/TLS 10.0.0.1"
+    - "Via[-1]: SIP/2.0/TLS 10.0.0.3"
+  expect_value_regex:
+    - "Via[0]: ^SIP/2.0/TLS.*"
+  expect_count:
+    - "Via: 2+"
+    - "X-Route: 2"
+```
 
 ### Отчёт
 
@@ -117,9 +171,11 @@ Header Validation Results:
   [PASS] expect_name_regex: ^X-Custom-.* — matched X-Custom-Foo
   [PASS] expect_not: X-Removed — not found
   [PASS] expect_not_regex: ^X-Internal-.* — no matching headers
-  [FAIL] expect_value: X-Custom — expected "exact", got "other"
+  [PASS] expect_count: Via — found 2, expected 2+
+  [PASS] expect_value: Via[0] — "SIP/2.0/TLS 10.0.0.1" matches
+  [FAIL] expect_value: Via[1] — expected "SIP/2.0/TLS 10.0.0.2", got "SIP/2.0/UDP 10.0.0.5"
   [PASS] expect_value_regex: X-Session-Id — "test-123" matches ^test-.*
-  RESULT: FAIL (1/6 checks failed)
+  RESULT: FAIL (1/8 checks failed)
 ==================================================
 ```
 
