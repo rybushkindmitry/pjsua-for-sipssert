@@ -11,6 +11,7 @@ Modes:
   --mode uac              Make an outgoing call (default)
   --mode uas              Wait for an incoming call
   --mode uas-tls-client   SIP UAS + TLS client (connect to remote, wait for INVITE)
+  --mode uac-tls-server   SIP UAC + TLS server (listen for TLS, then send INVITE)
 
 SIP options:
   --proxy HOST:PORT       SIP proxy / destination (uac mode)
@@ -128,6 +129,30 @@ if [[ "$MODE" == "uas-tls-client" ]]; then
     SCRIPT_ARGS+=(--duration="$DURATION")
 
     echo "=== pjsua-test: uas-tls-client mode ===" >&2
+    echo "CMD: ${SCRIPT_ARGS[*]}" >&2
+    exec "${SCRIPT_ARGS[@]}"
+fi
+
+# uac-tls-server: SIP UAC that listens for TLS connections (TLS server role)
+# then sends INVITE over the established TLS connection
+if [[ "$MODE" == "uac-tls-server" ]]; then
+    SCRIPT_ARGS=(python3 /scripts/uac_tls_server.py)
+    [[ -n "$PROXY" ]]             && SCRIPT_ARGS+=(--remote-host="${PROXY%%:*}")
+    if [[ "$PROXY" == *:* ]]; then
+        SCRIPT_ARGS+=(--remote-port="${PROXY##*:}")
+    fi
+    [[ -n "$DEST_URI" ]]          && SCRIPT_ARGS+=(--dest-uri="$DEST_URI")
+    [[ -n "$PORT" ]]              && SCRIPT_ARGS+=(--listen-port="$PORT")
+    [[ -n "$TLS_PORT" ]]          && SCRIPT_ARGS+=(--listen-port="$TLS_PORT")
+    [[ -n "$TLS_CA_FILE" ]]       && SCRIPT_ARGS+=(--tls-ca-file="$TLS_CA_FILE")
+    [[ -n "$TLS_CERT_FILE" ]]     && SCRIPT_ARGS+=(--tls-cert-file="$TLS_CERT_FILE")
+    [[ -n "$TLS_PRIVKEY_FILE" ]]  && SCRIPT_ARGS+=(--tls-privkey-file="$TLS_PRIVKEY_FILE")
+    [[ "$TLS_VERIFY_CLIENT" -eq 1 ]] && SCRIPT_ARGS+=(--tls-verify-client)
+    SCRIPT_ARGS+=(--srtp="$SRTP")
+    SCRIPT_ARGS+=(--srtp-secure="$SRTP_SECURE")
+    SCRIPT_ARGS+=(--duration="$DURATION")
+
+    echo "=== pjsua-test: uac-tls-server mode ===" >&2
     echo "CMD: ${SCRIPT_ARGS[*]}" >&2
     exec "${SCRIPT_ARGS[@]}"
 fi

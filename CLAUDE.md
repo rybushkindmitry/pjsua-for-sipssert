@@ -16,9 +16,10 @@ Docker-образ на базе PJSIP для тестирования SIP over T
 
 ```
 Dockerfile              — multi-stage сборка PJSIP 2.14.1 + runtime
-entrypoint.sh           — CLI-обёртка (режимы uac, uas, uas-tls-client)
+entrypoint.sh           — CLI-обёртка (режимы uac, uas, uas-tls-client, uac-tls-server)
 scripts/
   uas_tls_client.py     — PJSUA2: SIP UAS + TLS client + echo-валидация
+  uac_tls_server.py     — PJSUA2: SIP UAC + TLS server + echo-валидация
 ```
 
 ## Ключевые решения
