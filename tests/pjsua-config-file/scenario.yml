@@ -1,0 +1,15 @@
+tasks:
+  - name: uas
+    image: pjsua-test
+    daemon: true
+    args:
+      - "--mode=uas"
+      - "--config=/home/uas.yml"
+
+  - name: uac
+    image: pjsua-test
+    require:
+      - { started: uas }
+    args:
+      - "--mode=uac"
+      - "--config=/home/uac.yml"

@@ -596,18 +596,18 @@ def add_common_args(parser: argparse.ArgumentParser):
 
     # SRTP
     parser.add_argument("--srtp", choices=["off", "optional", "mandatory"],
-                        default="off", help="SRTP mode (default: off)")
-    parser.add_argument("--srtp-secure", type=int, choices=[0, 1, 2], default=0,
+                        default=None, help="SRTP mode (default: off)")
+    parser.add_argument("--srtp-secure", type=int, choices=[0, 1, 2], default=None,
                         help="SRTP secure signaling requirement (default: 0)")
 
     # Timing
-    parser.add_argument("--duration", type=int, default=10,
+    parser.add_argument("--duration", type=int, default=None,
                         help="Call duration in seconds (default: 10)")
-    parser.add_argument("--tolerance", type=float, default=90.0,
+    parser.add_argument("--tolerance", type=float, default=None,
                         help="Minimum match percentage to pass (default: 90)")
-    parser.add_argument("--wait-timeout", type=int, default=30,
+    parser.add_argument("--wait-timeout", type=int, default=None,
                         help="Max seconds to wait for incoming call (default: 30)")
-    parser.add_argument("--tls-wait", type=int, default=10,
+    parser.add_argument("--tls-wait", type=int, default=None,
                         help="Max seconds to wait for TLS connection (default: 10)")
 
     # Header checks
@@ -747,9 +747,26 @@ def print_echo_results(validator: EchoValidatorPort, tolerance: float) -> bool:
 # load_config_and_args
 # ---------------------------------------------------------------------------
 
+_ARG_DEFAULTS = {
+    "srtp": "off",
+    "srtp_secure": 0,
+    "duration": 10,
+    "tolerance": 90.0,
+    "wait_timeout": 30,
+    "tls_wait": 10,
+}
+
+
+def _apply_arg_defaults(args: argparse.Namespace):
+    """Fill in any args still at None with their real default values."""
+    for attr, default in _ARG_DEFAULTS.items():
+        if getattr(args, attr, None) is None:
+            setattr(args, attr, default)
+
+
 def load_config_and_args(description: str):
     """
-    Parse args, load config, merge, create HeaderManager.
+    Parse args, load config, merge, apply defaults, create HeaderManager.
     Returns (args, header_mgr).
     """
     parser = argparse.ArgumentParser(description=description)
@@ -760,6 +777,9 @@ def load_config_and_args(description: str):
     if getattr(args, "config", ""):
         config = ConfigLoader.load(args.config)
         ConfigLoader.merge(config, args)
+
+    # Fill in real defaults for any args not set by CLI or config
+    _apply_arg_defaults(args)
 
     header_cfg = ConfigLoader.merge_headers(config, args)
     header_mgr = HeaderManager(header_cfg)

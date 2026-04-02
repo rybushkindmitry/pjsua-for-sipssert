@@ -1,0 +1,18 @@
+port: 15097
+rtp_port: 18900
+duration: 10
+tolerance: 0
+srtp: mandatory
+srtp_secure: 0
+
+tls:
+  cert_file: /home/certs/cacert.pem
+  privkey_file: /home/certs/cakey.pem
+
+headers:
+  expect:
+    - "X-From-Config"
+  expect_value:
+    - "X-From-Config: works"
+  set:
+    - "X-Reply-Config: ok"

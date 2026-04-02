@@ -1,0 +1,17 @@
+proxy: 127.0.0.1:15097
+rtp_port: 19900
+duration: 5
+tolerance: 0
+srtp: mandatory
+srtp_secure: 0
+
+tls:
+  ca_file: /home/certs/cacert.pem
+
+headers:
+  set:
+    - "X-From-Config: works"
+  expect:
+    - "X-Reply-Config"
+  expect_value:
+    - "X-Reply-Config: ok"

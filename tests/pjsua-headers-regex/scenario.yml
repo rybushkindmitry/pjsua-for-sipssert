@@ -1,0 +1,36 @@
+tasks:
+  - name: uas
+    image: pjsua-test
+    daemon: true
+    args:
+      - "--mode=uas"
+      - "--port=15095"
+      - "--rtp-port=18800"
+      - "--tls-cert-file=/home/certs/cacert.pem"
+      - "--tls-privkey-file=/home/certs/cakey.pem"
+      - "--srtp=mandatory"
+      - "--srtp-secure=0"
+      - "--duration=10"
+      - "--tolerance=0"
+      - "--expect-header-value-regex=X-Id: ^session-\\d+-[a-z]+$"
+      - "--expect-header-regex=^X-Custom-.*"
+      - "--expect-no-header-regex=^X-Internal-.*"
+      - "--expect-header-count=X-Route: 2"
+
+  - name: uac
+    image: pjsua-test
+    require:
+      - { started: uas }
+    args:
+      - "--mode=uac"
+      - "--proxy=127.0.0.1:15095"
+      - "--rtp-port=19800"
+      - "--tls-ca-file=/home/certs/cacert.pem"
+      - "--srtp=mandatory"
+      - "--srtp-secure=0"
+      - "--duration=5"
+      - "--tolerance=0"
+      - "--set-header=X-Id: session-42-abc"
+      - "--set-header=X-Custom-Foo: bar"
+      - "--set-header=X-Route: route-1"
+      - "--set-header=X-Route: route-2"
