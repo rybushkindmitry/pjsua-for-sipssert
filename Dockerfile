@@ -5,6 +5,7 @@ RUN apk add --no-cache \
         pjsua \
         py3-pjsua \
         python3 \
+        py3-yaml \
         bash \
         ca-certificates \
     && mkdir -p /usr/share/alsa \
