@@ -6,7 +6,10 @@ RUN apk add --no-cache \
         py3-pjsua \
         python3 \
         bash \
-        ca-certificates
+        ca-certificates \
+    && mkdir -p /usr/share/alsa \
+    && printf 'pcm.!default { type null }\nctl.!default { type null }\n' \
+        > /usr/share/alsa/alsa.conf
 
 COPY entrypoint.sh /entrypoint.sh
 COPY scripts/ /scripts/
