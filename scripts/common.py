@@ -876,6 +876,72 @@ def wait_for_completion(app, role: str):
 
 
 # ---------------------------------------------------------------------------
+# re-INVITE helpers
+# ---------------------------------------------------------------------------
+
+def schedule_reinvites(call, app, role: str):
+    """
+    Schedule re-INVITE timers if --reinvite-by matches this script's role.
+
+    Returns list of Timer objects (empty if not applicable).
+    """
+    reinvite_by = getattr(app.args, "reinvite_by", None)
+    delays = getattr(app.args, "reinvite_delays", [])
+
+    if reinvite_by != role or not delays:
+        return []
+
+    timers = []
+    for delay in delays:
+        print(f"Scheduling re-INVITE in {delay}s.", file=sys.stderr)
+        t = threading.Timer(delay, _do_reinvite, args=(call,))
+        t.start()
+        timers.append(t)
+    return timers
+
+
+def _do_reinvite(call):
+    """Send re-INVITE (re-negotiation without SDP changes)."""
+    try:
+        prm = pj.CallOpParam(True)
+        call.reinvite(prm)
+        print("re-INVITE sent.", file=sys.stderr)
+    except Exception as e:
+        print(f"re-INVITE error: {e}", file=sys.stderr)
+
+
+def reconnect_media(call, app, mi_idx):
+    """
+    Connect or reconnect EchoValidatorPort to audio media.
+
+    If app.validator already exists, reuse it (re-INVITE case).
+    Otherwise create a new one.
+
+    Returns the validator.
+    """
+    aud_med = call.getAudioMedia(mi_idx)
+
+    if app.validator is not None:
+        # re-INVITE: reconnect existing validator
+        print(f"Re-connecting echo validator (stream {mi_idx})...", file=sys.stderr)
+        validator = app.validator
+    else:
+        # Initial INVITE: create new validator
+        print(f"Audio media active (stream {mi_idx}). Connecting echo validator...",
+              file=sys.stderr)
+        validator = EchoValidatorPort()
+        validator.register("echo-validator")
+        app.validator = validator
+
+    # Connect bidirectional media
+    validator.startTransmit(aud_med)
+    aud_med.startTransmit(validator)
+
+    print("Echo validator connected.", file=sys.stderr)
+    return validator
+
+
+# ---------------------------------------------------------------------------
 # Echo result helpers
 # ---------------------------------------------------------------------------
 
