@@ -5,13 +5,14 @@ tasks:
     daemon: true
     args:
       - "--mode=uas"
-      - "--tls"
       - "--port=15071"
+      - "--rtp-port=18500"
       - "--tls-cert-file=/home/certs/cacert.pem"
       - "--tls-privkey-file=/home/certs/cakey.pem"
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
+      - "--tolerance=0"
 
   # 2. UAC (TLS client): connects to UAS, sends INVITE
   - name: pjsua-uac
@@ -21,8 +22,9 @@ tasks:
     args:
       - "--mode=uac"
       - "--proxy=127.0.0.1:15071"
-      - "--tls"
+      - "--rtp-port=19500"
       - "--tls-ca-file=/home/certs/cacert.pem"
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=5"
+      - "--tolerance=0"
