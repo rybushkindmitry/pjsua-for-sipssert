@@ -1,0 +1,28 @@
+tasks:
+  # 1. UAS (TLS server): listens on TLS port 15071, auto-answers calls
+  - name: pjsua-uas
+    image: pjsua-test
+    daemon: true
+    args:
+      - "--mode=uas"
+      - "--tls"
+      - "--port=15071"
+      - "--tls-cert-file=/home/certs/cacert.pem"
+      - "--tls-privkey-file=/home/certs/cakey.pem"
+      - "--srtp=mandatory"
+      - "--srtp-secure=0"
+      - "--duration=10"
+
+  # 2. UAC (TLS client): connects to UAS, sends INVITE
+  - name: pjsua-uac
+    image: pjsua-test
+    require:
+      - { started: pjsua-uas }
+    args:
+      - "--mode=uac"
+      - "--proxy=127.0.0.1:15071"
+      - "--tls"
+      - "--tls-ca-file=/home/certs/cacert.pem"
+      - "--srtp=mandatory"
+      - "--srtp-secure=0"
+      - "--duration=5"
