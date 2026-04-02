@@ -7,12 +7,12 @@ RUN apk add --no-cache \
         python3 \
         bash \
         ca-certificates \
-    # Suppress ALSA errors (no sound card in Docker)
     && mkdir -p /usr/share/alsa \
     && printf 'pcm.!default { type null }\nctl.!default { type null }\n' \
-        > /usr/share/alsa/alsa.conf \
-    # Remove JACK runtime to suppress "cannot connect to server" errors
-    && apk del --no-cache jack 2>/dev/null; true
+        > /usr/share/alsa/alsa.conf
+
+# Suppress JACK "cannot connect to server" noise in logs
+ENV JACK_NO_START_SERVER=1
 
 COPY entrypoint.sh /entrypoint.sh
 COPY scripts/ /scripts/
