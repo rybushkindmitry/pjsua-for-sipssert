@@ -791,6 +791,91 @@ def safe_exit(rc: int):
 
 
 # ---------------------------------------------------------------------------
+# BYE control helpers
+# ---------------------------------------------------------------------------
+
+def apply_bye_default(args, role: str):
+    """Set --bye default based on script role if not explicitly set."""
+    if getattr(args, "bye", None) is None:
+        args.bye = role
+
+
+def schedule_bye(call, app, role: str):
+    """
+    Schedule BYE based on --bye arg and script role.
+
+    If bye == role: start timer to send BYE after --duration seconds.
+    If bye != role and bye != 'none': do nothing (wait for remote BYE).
+    If bye == 'none': do nothing.
+
+    Returns the Timer if one was started, else None.
+    """
+    bye = getattr(app.args, "bye", role)
+    if bye == role:
+        duration = app.args.duration
+        print(f"Will send BYE in {duration}s.", file=sys.stderr)
+        timer = threading.Timer(duration, _do_hangup, args=(call, app))
+        timer.start()
+        return timer
+    elif bye == "none":
+        print(f"BYE=none: will not send BYE.", file=sys.stderr)
+        return None
+    else:
+        print(f"Waiting for BYE from remote side.", file=sys.stderr)
+        return None
+
+
+def _do_hangup(call, app):
+    """Hangup callback for BYE timer."""
+    try:
+        prm = pj.CallOpParam()
+        prm.statusCode = pj.PJSIP_SC_OK
+        call.hangup(prm)
+    except Exception as e:
+        print(f"Hangup error: {e}", file=sys.stderr)
+        app.call_completed.set()
+
+
+def wait_for_completion(app, role: str):
+    """
+    Wait for call to complete, respecting --bye and --wait-bye.
+
+    Returns True if call completed normally, False if timed out.
+    """
+    bye = getattr(app.args, "bye", role)
+    duration = app.args.duration
+    wait_bye = getattr(app.args, "wait_bye", 30)
+
+    if bye == role:
+        # We send BYE — wait for duration + reasonable margin
+        timeout = duration + 30
+        if app.call_completed.wait(timeout=timeout):
+            print("Call completed.", file=sys.stderr)
+            return True
+        else:
+            print("Timeout waiting for call to complete.", file=sys.stderr)
+            return False
+    elif bye == "none":
+        # No BYE — just wait for duration (media collection), then exit
+        if app.call_completed.wait(timeout=duration):
+            print("Call completed (unexpected BYE received).", file=sys.stderr)
+        else:
+            print(f"Duration {duration}s elapsed, no BYE sent (bye=none).",
+                  file=sys.stderr)
+        return True
+    else:
+        # Remote sends BYE — wait duration + wait_bye
+        timeout = duration + wait_bye
+        if app.call_completed.wait(timeout=timeout):
+            print("Call completed (BYE from remote).", file=sys.stderr)
+            return True
+        else:
+            print(f"Timeout waiting for BYE from remote side "
+                  f"(waited {timeout}s).", file=sys.stderr)
+            return False
+
+
+# ---------------------------------------------------------------------------
 # Echo result helpers
 # ---------------------------------------------------------------------------
 
