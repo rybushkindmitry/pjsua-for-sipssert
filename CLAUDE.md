@@ -24,7 +24,7 @@ scripts/
   uas.py                — PJSUA2: SIP UAS + TLS server + echo-валидация + заголовки
   uas_tls_client.py     — PJSUA2: SIP UAS + TLS client + echo-валидация + заголовки
   uac_tls_server.py     — PJSUA2: SIP UAC + TLS server + echo-валидация + заголовки
-tests/                  — sipssert интеграционные тесты (7 сценариев)
+tests/                  — sipssert интеграционные тесты (9 сценариев)
   pjsua-standard-roles/ — стандартные роли uac + uas
   pjsua-tls-roles/      — развязка TLS-ролей: uac-tls-server + uas-tls-client
   pjsua-config-file/    — YAML-конфиг (--config)
@@ -32,6 +32,8 @@ tests/                  — sipssert интеграционные тесты (7 
   pjsua-headers-expect-not/   — expect-no-header
   pjsua-headers-regex/        — expect-header-regex + expect-header-count
   pjsua-headers-tls-roles/    — заголовки с развязкой TLS-ролей
+  pjsua-udp-transport/  — UDP транспорт (--transport=udp)
+  pjsua-tcp-transport/  — TCP транспорт (--transport=tcp)
 ```
 
 ## Ключевые решения
@@ -41,6 +43,7 @@ tests/                  — sipssert интеграционные тесты (7 
 - **ConfigLoader** — загрузка YAML-конфига (`--config=FILE`); CLI-аргументы имеют приоритет; списки заголовков (`headers:`) объединяются (merge)
 - **HeaderManager** — управляет 8 типами проверок SIP-заголовков (set, expect, expect_not, expect_name_regex, expect_not_regex, expect_value, expect_value_regex, expect_count); поддерживает индексирование (Name[0], Name[-1]) и диапазоны count (N, N+, N-M)
 - **EchoValidatorPort** — кастомный `AudioMediaPort` для побайтового сравнения RTP/SRTP фреймов
+- **--transport** — параметр для выбора транспорта (tls, tcp, udp, default: tls); uac/uas поддерживают все 3; режимы с TLS-ролями всегда используют TLS. В TRANSPORT_MAP (entrypoint.sh) отображаются значения на порты и флаги.
 - **Probe INVITE** — uas-tls-client отправляет probe для сигнализации о TLS-готовности uac-tls-server
 - **transportId** — аккаунты привязаны к конкретным TLS-транспортам для корректной маршрутизации
 - **os._exit()** — обход segfault в PJSUA2 Python bindings при libDestroy()
