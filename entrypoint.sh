@@ -73,6 +73,7 @@ PLAY_FILE=""
 REC_FILE=""
 DURATION=10
 AUTO_LOOP=0
+RTP_PORT=""
 TOLERANCE=""
 WAIT_TIMEOUT=""
 TLS_WAIT=""
@@ -111,6 +112,7 @@ while [[ $# -gt 0 ]]; do
         --play-file)        PLAY_FILE="$2";        shift 2 ;;
         --rec-file)         REC_FILE="$2";         shift 2 ;;
         --duration)         DURATION="$2";         shift 2 ;;
+        --rtp-port)         RTP_PORT="$2";         shift 2 ;;
         --tolerance)        TOLERANCE="$2";        shift 2 ;;
         --wait-timeout)     WAIT_TIMEOUT="$2";     shift 2 ;;
         --tls-wait)         TLS_WAIT="$2";         shift 2 ;;
@@ -148,6 +150,7 @@ if [[ "$MODE" == "uas-tls-client" ]]; then
     SCRIPT_ARGS+=(--srtp="$SRTP")
     SCRIPT_ARGS+=(--srtp-secure="$SRTP_SECURE")
     SCRIPT_ARGS+=(--duration="$DURATION")
+    [[ -n "$RTP_PORT" ]]          && SCRIPT_ARGS+=(--rtp-port="$RTP_PORT")
     [[ -n "$TOLERANCE" ]]         && SCRIPT_ARGS+=(--tolerance="$TOLERANCE")
     [[ -n "$WAIT_TIMEOUT" ]]      && SCRIPT_ARGS+=(--wait-timeout="$WAIT_TIMEOUT")
 
@@ -175,6 +178,7 @@ if [[ "$MODE" == "uac-tls-server" ]]; then
     SCRIPT_ARGS+=(--srtp="$SRTP")
     SCRIPT_ARGS+=(--srtp-secure="$SRTP_SECURE")
     SCRIPT_ARGS+=(--duration="$DURATION")
+    [[ -n "$RTP_PORT" ]]          && SCRIPT_ARGS+=(--rtp-port="$RTP_PORT")
     [[ -n "$TOLERANCE" ]]         && SCRIPT_ARGS+=(--tolerance="$TOLERANCE")
     [[ -n "$TLS_WAIT" ]]          && SCRIPT_ARGS+=(--tls-wait="$TLS_WAIT")
 

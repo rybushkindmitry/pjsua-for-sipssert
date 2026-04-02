@@ -62,8 +62,8 @@ class EchoValidatorPort(pj.AudioMediaPort):
         fmt.bitsPerSample = bits_per_sample
         self.fmt = fmt
 
-    def createPort(self, name, pool_endpoint):
-        self.createMediaPort(name, self.fmt)
+    def register(self, name):
+        super().createPort(name, self.fmt)
 
     def onFrameRequested(self, frame):
         size = frame.size
@@ -131,6 +131,7 @@ class TlsServerUac:
         self.transport_id = None
         self.call = None
         self.call_completed = threading.Event()
+        self.tls_ready = threading.Event()
         self.call_success = False
         self.validator = None
 
@@ -209,30 +210,30 @@ class TlsServerUac:
                                                   pj.PJMEDIA_SRTP_DISABLED)
         acfg.mediaConfig.srtpSecureSignaling = self.args.srtp_secure
 
+        # RTP port to avoid conflicts in host network mode
+        if self.args.rtp_port:
+            acfg.mediaConfig.transportConfig.port = self.args.rtp_port
+
         self.account = UacAccount(self)
         self.account.create(acfg)
 
     def _wait_for_tls_connection(self):
-        """Wait for remote side to connect via TLS before sending INVITE."""
+        """Wait for remote side to connect via TLS before sending INVITE.
+
+        Detection: the account's onIncomingCall fires when the remote side
+        sends any SIP request (e.g. a probe INVITE). We reject it and use
+        that event to confirm TLS is up. Alternatively, we poll for a TCP
+        connection on our listen port.
+        """
         timeout = self.args.tls_wait
         print(f"Waiting up to {timeout}s for remote TLS client to connect...",
               file=sys.stderr)
 
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                ti = self.ep.transportGetInfo(self.transport_id)
-                # usageCount > 1 means at least one connection established
-                # (1 = the listener itself)
-                if ti.usageCount > 1:
-                    print(f"TLS client connected (usage count: {ti.usageCount}).",
-                          file=sys.stderr)
-                    # Small delay for handshake to fully complete
-                    time.sleep(0.5)
-                    return
-            except pj.Error:
-                pass
-            time.sleep(0.2)
+        if self.tls_ready.wait(timeout=timeout):
+            print("TLS client connected (incoming SIP request detected).",
+                  file=sys.stderr)
+            time.sleep(0.5)
+            return
 
         raise RuntimeError(
             f"No incoming TLS connection within {timeout}s. "
@@ -290,15 +291,42 @@ class TlsServerUac:
         print(f"{'='*50}\n", file=sys.stderr)
 
     def _shutdown(self):
+        try:
+            self.ep.hangupAllCalls()
+            time.sleep(0.5)
+        except pj.Error:
+            pass
         self.call = None
+        self.validator = None
         self.account = None
-        self.ep.libDestroy()
+        try:
+            self.ep.libDestroy()
+        except pj.Error:
+            pass
 
 
 class UacAccount(pj.Account):
     def __init__(self, app):
         super().__init__()
         self.app = app
+
+    def onIncomingCall(self, prm):
+        """Incoming call = TLS connection is established.
+
+        Before _make_call: reject it (probe from uas-tls-client).
+        After _make_call: should not happen in this mode.
+        """
+        if not self.app.tls_ready.is_set():
+            print("Received probe call — TLS connection confirmed.", file=sys.stderr)
+            self.app.tls_ready.set()
+            # Reject the probe
+            call = pj.Call(self, prm.callId)
+            reject = pj.CallOpParam()
+            reject.statusCode = pj.PJSIP_SC_BUSY_HERE
+            try:
+                call.hangup(reject)
+            except pj.Error:
+                pass
 
 
 class UacCall(pj.Call):
@@ -328,7 +356,7 @@ class UacCall(pj.Call):
         for mi_idx, mi in enumerate(ci.media):
             if mi.type != pj.PJMEDIA_TYPE_AUDIO:
                 continue
-            if mi.status != pj.PJSIP_INV_STATE_CONFIRMED:
+            if mi.status != pj.PJSUA_CALL_MEDIA_ACTIVE:
                 continue
 
             self.media_active = True
@@ -338,7 +366,7 @@ class UacCall(pj.Call):
             aud_med = self.getAudioMedia(mi_idx)
 
             validator = EchoValidatorPort()
-            validator.createPort("echo-validator", self.app.ep)
+            validator.register("echo-validator")
             self.app.validator = validator
 
             # validator -> call (send pattern)
@@ -367,6 +395,8 @@ def parse_args():
                    help="Remote SIP port (default: 5060)")
     p.add_argument("--listen-port", type=int, default=5061,
                    help="Local TLS listen port (default: 5061)")
+    p.add_argument("--rtp-port", type=int, default=0,
+                   help="Local RTP port (0 = auto, default: 0)")
     p.add_argument("--bind-ip", default="",
                    help="Bind to specific IP address (default: all interfaces)")
     p.add_argument("--dest-uri", default="",
@@ -397,4 +427,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     app = TlsServerUac(args)
-    sys.exit(app.run())
+    rc = app.run()
+    # Use os._exit to avoid segfault in PJSUA2 Python bindings cleanup
+    import os
+    os._exit(rc)

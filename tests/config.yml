@@ -1,0 +1,2 @@
+defaults:
+  network_mode: host

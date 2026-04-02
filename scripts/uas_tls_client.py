@@ -76,9 +76,9 @@ class EchoValidatorPort(pj.AudioMediaPort):
         fmt.bitsPerSample = bits_per_sample
         self.fmt = fmt
 
-    def createPort(self, name, pool_endpoint):
+    def register(self, name):
         """Register this port with the conference bridge."""
-        self.createMediaPort(name, self.fmt)
+        super().createPort(name, self.fmt)
 
     # -- callbacks ----------------------------------------------------------
 
@@ -207,9 +207,15 @@ class TlsClientUas:
     def _create_account(self):
         """Create account configured to auto-answer via TLS."""
         acfg = pj.AccountConfig()
-        acfg.idUri = "sip:uas@127.0.0.1;transport=tls"
+
+        bind_addr = self.args.bind_ip or "127.0.0.1"
+        local_port = self.args.local_port or 5061
+        acfg.idUri = f"sip:uas@{bind_addr}:{local_port};transport=tls"
         acfg.regConfig.registrarUri = ""
         acfg.regConfig.registerOnAdd = False
+
+        # Bind account to our TLS transport so Contact header can be generated
+        acfg.sipConfig.transportId = self.transport_id
 
         proxy_uri = (f"sip:{self.args.remote_host}:{self.args.remote_port}"
                      f";transport=tls;lr")
@@ -225,6 +231,9 @@ class TlsClientUas:
                                                   pj.PJMEDIA_SRTP_DISABLED)
         acfg.mediaConfig.srtpSecureSignaling = self.args.srtp_secure
 
+        if self.args.rtp_port:
+            acfg.mediaConfig.transportConfig.port = self.args.rtp_port
+
         self.account = UasAccount(self)
         self.account.create(acfg)
 
@@ -232,18 +241,30 @@ class TlsClientUas:
         self._establish_tls_connection()
 
     def _establish_tls_connection(self):
-        """Send OPTIONS to remote to trigger TLS client handshake."""
-        remote_uri = (f"sip:{self.args.remote_host}:{self.args.remote_port}"
+        """Make a dummy call attempt to force TLS client handshake."""
+        remote_uri = (f"sip:ping@{self.args.remote_host}:{self.args.remote_port}"
                       f";transport=tls")
+        print(f"Establishing TLS connection to {remote_uri}...", file=sys.stderr)
+
+        # Use a short-lived call to force PJSIP to open TLS connection.
+        # The call will fail (no one answers), but the TLS transport stays.
         try:
-            buddy_cfg = pj.BuddyConfig()
-            buddy_cfg.uri = remote_uri
-            buddy = pj.Buddy()
-            buddy.create(self.account, buddy_cfg)
-            print(f"Establishing TLS connection to {remote_uri}...", file=sys.stderr)
-            time.sleep(1)
+            dummy = pj.Call(self.account)
+            prm = pj.CallOpParam(True)
+            dummy.makeCall(remote_uri, prm)
+            # Give time for TLS handshake
+            time.sleep(2)
+            # Hang up the probe call
+            try:
+                hup = pj.CallOpParam()
+                hup.statusCode = pj.PJSIP_SC_REQUEST_TERMINATED
+                dummy.hangup(hup)
+            except pj.Error:
+                pass
         except pj.Error as e:
-            print(f"Note: initial connection setup: {e}", file=sys.stderr)
+            # Even if the call fails, TLS connection may be established
+            print(f"TLS probe: {e}", file=sys.stderr)
+            time.sleep(1)
 
     def _wait_for_call(self):
         timeout = self.args.wait_timeout
@@ -279,8 +300,17 @@ class TlsClientUas:
         print(f"{'='*50}\n", file=sys.stderr)
 
     def _shutdown(self):
+        try:
+            self.ep.hangupAllCalls()
+            time.sleep(0.5)
+        except pj.Error:
+            pass
+        self.validator = None
         self.account = None
-        self.ep.libDestroy()
+        try:
+            self.ep.libDestroy()
+        except pj.Error:
+            pass
 
 
 class UasAccount(pj.Account):
@@ -326,7 +356,7 @@ class UasCall(pj.Call):
         for mi_idx, mi in enumerate(ci.media):
             if mi.type != pj.PJMEDIA_TYPE_AUDIO:
                 continue
-            if mi.status != pj.PJSIP_INV_STATE_CONFIRMED:
+            if mi.status != pj.PJSUA_CALL_MEDIA_ACTIVE:
                 continue
 
             self.media_active = True
@@ -340,7 +370,7 @@ class UasCall(pj.Call):
             #   validator.TX -> call (we send known pattern)
             #   call -> validator.RX (we receive echo and compare)
             validator = EchoValidatorPort()
-            validator.createPort("echo-validator", self.app.ep)
+            validator.register("echo-validator")
             self.app.validator = validator
 
             # validator -> call (send pattern to remote)
@@ -369,6 +399,8 @@ def parse_args():
                    help="Remote TLS server port (default: 5061)")
     p.add_argument("--local-port", type=int, default=0,
                    help="Local TLS port (0 = ephemeral)")
+    p.add_argument("--rtp-port", type=int, default=0,
+                   help="Local RTP port (0 = auto, default: 0)")
     p.add_argument("--bind-ip", default="",
                    help="Bind to specific IP address (default: all interfaces)")
     p.add_argument("--tls-ca-file", default="",
@@ -397,4 +429,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     app = TlsClientUas(args)
-    sys.exit(app.run())
+    rc = app.run()
+    # Use os._exit to avoid segfault in PJSUA2 Python bindings cleanup
+    import os
+    os._exit(rc)
