@@ -15,7 +15,7 @@ Modes:
 
 SIP options:
   --proxy HOST:PORT       SIP proxy / destination (uac mode)
-  --port PORT             Local SIP port (default: 5060, or 5061 for TLS)
+  --port PORT             Local SIP/TLS port (default: 5060, or 5061 for TLS)
   --ip ADDR               Bind to specific IP address / interface (default: 0.0.0.0)
   --username USER         SIP auth username
   --password PASS         SIP auth password
@@ -28,7 +28,6 @@ TLS options:
   --tls-privkey-file PATH Private key file
   --tls-verify-server     Verify server certificate
   --tls-verify-client     Verify client certificate
-  --tls-port PORT         TLS listen port (default: 5061)
 
 SRTP options:
   --srtp off              Disable SRTP (default)
@@ -57,7 +56,6 @@ MODE="uac"
 PROXY=""
 PORT=""
 BIND_IP=""
-TLS_PORT=""
 USERNAME=""
 PASSWORD=""
 DEST_URI=""
@@ -106,7 +104,7 @@ while [[ $# -gt 0 ]]; do
         --tls-privkey-file) TLS_PRIVKEY_FILE="$2"; shift 2 ;;
         --tls-verify-server) TLS_VERIFY_SERVER=1;  shift   ;;
         --tls-verify-client) TLS_VERIFY_CLIENT=1;  shift   ;;
-        --tls-port)         TLS_PORT="$2";         shift 2 ;;
+        --tls-port)         PORT="$2";             shift 2 ;; # deprecated alias for --port
         --srtp)             SRTP="$2";             shift 2 ;;
         --srtp-secure)      SRTP_SECURE="$2";      shift 2 ;;
         --play-file)        PLAY_FILE="$2";        shift 2 ;;
@@ -169,7 +167,6 @@ if [[ "$MODE" == "uac-tls-server" ]]; then
     fi
     [[ -n "$DEST_URI" ]]          && SCRIPT_ARGS+=(--dest-uri="$DEST_URI")
     [[ -n "$PORT" ]]              && SCRIPT_ARGS+=(--listen-port="$PORT")
-    [[ -n "$TLS_PORT" ]]          && SCRIPT_ARGS+=(--listen-port="$TLS_PORT")
     [[ -n "$BIND_IP" ]]           && SCRIPT_ARGS+=(--bind-ip="$BIND_IP")
     [[ -n "$TLS_CA_FILE" ]]       && SCRIPT_ARGS+=(--tls-ca-file="$TLS_CA_FILE")
     [[ -n "$TLS_CERT_FILE" ]]     && SCRIPT_ARGS+=(--tls-cert-file="$TLS_CERT_FILE")
@@ -216,7 +213,7 @@ fi
 if [[ -n "$PORT" ]]; then
     CMD+=(--local-port="$PORT")
 elif [[ "$TLS_ENABLED" -eq 1 ]]; then
-    CMD+=(--local-port="${TLS_PORT:-5061}")
+    CMD+=(--local-port=5061)
 fi
 
 # Auth
