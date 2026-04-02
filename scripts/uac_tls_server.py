@@ -183,11 +183,18 @@ class TlsServerUac:
         print(f"TLS server: listening on port {self.args.listen_port}", file=sys.stderr)
 
     def _create_account(self):
-        """Create account for making outgoing calls."""
+        """Create account for making outgoing calls via our TLS transport."""
         acfg = pj.AccountConfig()
-        acfg.idUri = f"sip:uac@0.0.0.0:{self.args.listen_port};transport=tls"
+
+        bind_addr = self.args.bind_ip or "0.0.0.0"
+        acfg.idUri = f"sip:uac@{bind_addr}:{self.args.listen_port};transport=tls"
         acfg.regConfig.registrarUri = ""
         acfg.regConfig.registerOnAdd = False
+
+        # Force account to use our TLS listener transport —
+        # this ensures INVITE goes over the incoming TLS connection
+        # rather than opening a new outgoing one
+        acfg.sipConfig.transportId = self.transport_id
 
         # SRTP
         srtp_map = {
@@ -212,16 +219,20 @@ class TlsServerUac:
         """Send INVITE to remote host over the established TLS connection."""
         dest_uri = self.args.dest_uri
         if not dest_uri:
-            dest_uri = (f"sip:test@{self.args.remote_host}:{self.args.remote_port}"
-                        f";transport=tls")
+            # No ;transport=tls here — transport is forced via account's transportId
+            dest_uri = f"sip:test@{self.args.remote_host}:{self.args.remote_port}"
 
         print(f"Making call to {dest_uri}...", file=sys.stderr)
 
         call = UacCall(self, self.account)
         self.call = call
 
-        prm = pj.CallOpParam(True)
-        call.makeCall(dest_uri, prm)
+        try:
+            prm = pj.CallOpParam(True)
+            call.makeCall(dest_uri, prm)
+        except pj.Error as e:
+            print(f"makeCall failed: {e}", file=sys.stderr)
+            self.call_completed.set()
 
     def _wait_for_call_end(self):
         timeout = self.args.duration + 30  # duration + grace period
