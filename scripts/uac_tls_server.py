@@ -163,6 +163,8 @@ class TlsServerUac:
         """Create TLS transport that LISTENS for incoming connections (TLS server role)."""
         tp_cfg = pj.TransportConfig()
         tp_cfg.port = self.args.listen_port
+        if self.args.bind_ip:
+            tp_cfg.boundAddress = self.args.bind_ip
 
         tls = tp_cfg.tlsConfig
         tls.method = pj.PJSIP_TLSV1_2_METHOD
@@ -336,6 +338,8 @@ def parse_args():
                    help="Remote SIP port (default: 5060)")
     p.add_argument("--listen-port", type=int, default=5061,
                    help="Local TLS listen port (default: 5061)")
+    p.add_argument("--bind-ip", default="",
+                   help="Bind to specific IP address (default: all interfaces)")
     p.add_argument("--dest-uri", default="",
                    help="Full destination SIP URI (overrides --remote-host/port)")
     p.add_argument("--tls-ca-file", default="",

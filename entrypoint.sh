@@ -16,6 +16,7 @@ Modes:
 SIP options:
   --proxy HOST:PORT       SIP proxy / destination (uac mode)
   --port PORT             Local SIP port (default: 5060, or 5061 for TLS)
+  --ip ADDR               Bind to specific IP address / interface (default: 0.0.0.0)
   --username USER         SIP auth username
   --password PASS         SIP auth password
   --dest-uri URI          Full destination SIP URI (overrides --proxy)
@@ -55,6 +56,7 @@ USAGE
 MODE="uac"
 PROXY=""
 PORT=""
+BIND_IP=""
 TLS_PORT=""
 USERNAME=""
 PASSWORD=""
@@ -79,6 +81,7 @@ while [[ $# -gt 0 ]]; do
         --mode)           MODE="$2";             shift 2 ;;
         --proxy)          PROXY="$2";            shift 2 ;;
         --port)           PORT="$2";             shift 2 ;;
+        --ip)             BIND_IP="$2";          shift 2 ;;
         --username)       USERNAME="$2";         shift 2 ;;
         --password)       PASSWORD="$2";         shift 2 ;;
         --dest-uri)       DEST_URI="$2";         shift 2 ;;
@@ -120,6 +123,7 @@ if [[ "$MODE" == "uas-tls-client" ]]; then
         SCRIPT_ARGS+=(--remote-port="${PROXY##*:}")
     fi
     [[ -n "$PORT" ]]              && SCRIPT_ARGS+=(--local-port="$PORT")
+    [[ -n "$BIND_IP" ]]           && SCRIPT_ARGS+=(--bind-ip="$BIND_IP")
     [[ -n "$TLS_CA_FILE" ]]       && SCRIPT_ARGS+=(--tls-ca-file="$TLS_CA_FILE")
     [[ -n "$TLS_CERT_FILE" ]]     && SCRIPT_ARGS+=(--tls-cert-file="$TLS_CERT_FILE")
     [[ -n "$TLS_PRIVKEY_FILE" ]]  && SCRIPT_ARGS+=(--tls-privkey-file="$TLS_PRIVKEY_FILE")
@@ -144,6 +148,7 @@ if [[ "$MODE" == "uac-tls-server" ]]; then
     [[ -n "$DEST_URI" ]]          && SCRIPT_ARGS+=(--dest-uri="$DEST_URI")
     [[ -n "$PORT" ]]              && SCRIPT_ARGS+=(--listen-port="$PORT")
     [[ -n "$TLS_PORT" ]]          && SCRIPT_ARGS+=(--listen-port="$TLS_PORT")
+    [[ -n "$BIND_IP" ]]           && SCRIPT_ARGS+=(--bind-ip="$BIND_IP")
     [[ -n "$TLS_CA_FILE" ]]       && SCRIPT_ARGS+=(--tls-ca-file="$TLS_CA_FILE")
     [[ -n "$TLS_CERT_FILE" ]]     && SCRIPT_ARGS+=(--tls-cert-file="$TLS_CERT_FILE")
     [[ -n "$TLS_PRIVKEY_FILE" ]]  && SCRIPT_ARGS+=(--tls-privkey-file="$TLS_PRIVKEY_FILE")
@@ -159,6 +164,9 @@ fi
 
 # Build pjsua command
 CMD=(pjsua --null-audio)
+
+# Bind IP
+[[ -n "$BIND_IP" ]] && CMD+=(--ip="$BIND_IP")
 
 # SRTP
 case "$SRTP" in

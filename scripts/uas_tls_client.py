@@ -184,6 +184,8 @@ class TlsClientUas:
         """Create TLS transport that CONNECTS to remote host (TLS client role)."""
         tp_cfg = pj.TransportConfig()
         tp_cfg.port = self.args.local_port
+        if self.args.bind_ip:
+            tp_cfg.boundAddress = self.args.bind_ip
 
         tls = tp_cfg.tlsConfig
         tls.method = pj.PJSIP_TLSV1_2_METHOD
@@ -373,6 +375,8 @@ def parse_args():
                    help="Remote TLS server port (default: 5061)")
     p.add_argument("--local-port", type=int, default=0,
                    help="Local TLS port (0 = ephemeral)")
+    p.add_argument("--bind-ip", default="",
+                   help="Bind to specific IP address (default: all interfaces)")
     p.add_argument("--tls-ca-file", default="",
                    help="CA certificate file")
     p.add_argument("--tls-cert-file", default="",
