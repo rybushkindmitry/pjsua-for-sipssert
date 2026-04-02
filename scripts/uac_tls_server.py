@@ -211,9 +211,28 @@ class TlsServerUac:
 
     def _wait_for_tls_connection(self):
         """Wait for remote side to connect via TLS before sending INVITE."""
-        wait = self.args.tls_wait
-        print(f"Waiting {wait}s for remote TLS client to connect...", file=sys.stderr)
-        time.sleep(wait)
+        timeout = self.args.tls_wait
+        print(f"Waiting up to {timeout}s for remote TLS client to connect...",
+              file=sys.stderr)
+
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                ti = self.ep.transportGetInfo(self.transport_id)
+                # usageCount > 1 means at least one connection established
+                # (1 = the listener itself)
+                if ti.usageCount > 1:
+                    print(f"TLS client connected (usage count: {ti.usageCount}).",
+                          file=sys.stderr)
+                    # Small delay for handshake to fully complete
+                    time.sleep(0.5)
+                    return
+            except pj.Error:
+                pass
+            time.sleep(0.2)
+
+        print(f"Warning: no incoming TLS connection detected within {timeout}s, "
+              f"proceeding anyway...", file=sys.stderr)
 
     def _make_call(self):
         """Send INVITE to remote host over the established TLS connection."""
@@ -355,8 +374,8 @@ def parse_args():
                    help="Server private key file")
     p.add_argument("--tls-verify-client", action="store_true",
                    help="Verify client certificate (mTLS)")
-    p.add_argument("--tls-wait", type=int, default=3,
-                   help="Seconds to wait for TLS client to connect (default: 3)")
+    p.add_argument("--tls-wait", type=int, default=10,
+                   help="Max seconds to wait for TLS client to connect (default: 10)")
     p.add_argument("--srtp", choices=["off", "optional", "mandatory"],
                    default="off", help="SRTP mode")
     p.add_argument("--srtp-secure", type=int, choices=[0, 1, 2], default=0,
