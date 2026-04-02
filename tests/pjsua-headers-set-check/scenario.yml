@@ -1,0 +1,34 @@
+tasks:
+  - name: uas
+    image: pjsua-test
+    daemon: true
+    args:
+      - "--mode=uas"
+      - "--port=15091"
+      - "--rtp-port=18600"
+      - "--tls-cert-file=/home/certs/cacert.pem"
+      - "--tls-privkey-file=/home/certs/cakey.pem"
+      - "--srtp=mandatory"
+      - "--srtp-secure=0"
+      - "--duration=10"
+      - "--tolerance=0"
+      - "--set-header=X-Reply: world"
+      - "--expect-header=X-Test"
+      - "--expect-header-value=X-Test: hello"
+
+  - name: uac
+    image: pjsua-test
+    require:
+      - { started: uas }
+    args:
+      - "--mode=uac"
+      - "--proxy=127.0.0.1:15091"
+      - "--rtp-port=19600"
+      - "--tls-ca-file=/home/certs/cacert.pem"
+      - "--srtp=mandatory"
+      - "--srtp-secure=0"
+      - "--duration=5"
+      - "--tolerance=0"
+      - "--set-header=X-Test: hello"
+      - "--expect-header=X-Reply"
+      - "--expect-header-value=X-Reply: world"
