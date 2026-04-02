@@ -581,6 +581,8 @@ def add_common_args(parser: argparse.ArgumentParser):
                         help="Destination SIP URI")
 
     # TLS
+    parser.add_argument("--tls", action="store_true",
+                        help="Enable TLS transport (no-op: TLS is always used; kept for compatibility)")
     parser.add_argument("--tls-ca-file", default="",
                         help="CA certificate file")
     parser.add_argument("--tls-cert-file", default="",
