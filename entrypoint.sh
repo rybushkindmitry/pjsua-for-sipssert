@@ -76,31 +76,42 @@ AUTO_LOOP=0
 EXTRA_ARGS=""
 PJSUA2_SCRIPT=""
 
+# Parse --key=value: split into --key value
+ARGS=()
+for arg in "$@"; do
+    if [[ "$arg" == --*=* ]]; then
+        ARGS+=("${arg%%=*}" "${arg#*=}")
+    else
+        ARGS+=("$arg")
+    fi
+done
+set -- "${ARGS[@]}"
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --mode)           MODE="$2";             shift 2 ;;
-        --proxy)          PROXY="$2";            shift 2 ;;
-        --port)           PORT="$2";             shift 2 ;;
-        --ip)             BIND_IP="$2";          shift 2 ;;
-        --username)       USERNAME="$2";         shift 2 ;;
-        --password)       PASSWORD="$2";         shift 2 ;;
-        --dest-uri)       DEST_URI="$2";         shift 2 ;;
-        --tls)            TLS_ENABLED=1;         shift   ;;
-        --tls-ca-file)    TLS_CA_FILE="$2";      shift 2 ;;
-        --tls-cert-file)  TLS_CERT_FILE="$2";    shift 2 ;;
+        --mode)             MODE="$2";             shift 2 ;;
+        --proxy)            PROXY="$2";            shift 2 ;;
+        --port)             PORT="$2";             shift 2 ;;
+        --ip)               BIND_IP="$2";          shift 2 ;;
+        --username)         USERNAME="$2";         shift 2 ;;
+        --password)         PASSWORD="$2";         shift 2 ;;
+        --dest-uri)         DEST_URI="$2";         shift 2 ;;
+        --tls)              TLS_ENABLED=1;         shift   ;;
+        --tls-ca-file)      TLS_CA_FILE="$2";      shift 2 ;;
+        --tls-cert-file)    TLS_CERT_FILE="$2";    shift 2 ;;
         --tls-privkey-file) TLS_PRIVKEY_FILE="$2"; shift 2 ;;
-        --tls-verify-server) TLS_VERIFY_SERVER=1; shift  ;;
-        --tls-verify-client) TLS_VERIFY_CLIENT=1; shift  ;;
-        --tls-port)       TLS_PORT="$2";         shift 2 ;;
-        --srtp)           SRTP="$2";             shift 2 ;;
-        --srtp-secure)    SRTP_SECURE="$2";      shift 2 ;;
-        --play-file)      PLAY_FILE="$2";        shift 2 ;;
-        --rec-file)       REC_FILE="$2";         shift 2 ;;
-        --duration)       DURATION="$2";         shift 2 ;;
-        --auto-loop)      AUTO_LOOP=1;           shift   ;;
-        --extra)          EXTRA_ARGS="$2";       shift 2 ;;
-        --pjsua2-script)  PJSUA2_SCRIPT="$2";   shift 2 ;;
-        --help|-h)        usage ;;
+        --tls-verify-server) TLS_VERIFY_SERVER=1;  shift   ;;
+        --tls-verify-client) TLS_VERIFY_CLIENT=1;  shift   ;;
+        --tls-port)         TLS_PORT="$2";         shift 2 ;;
+        --srtp)             SRTP="$2";             shift 2 ;;
+        --srtp-secure)      SRTP_SECURE="$2";      shift 2 ;;
+        --play-file)        PLAY_FILE="$2";        shift 2 ;;
+        --rec-file)         REC_FILE="$2";         shift 2 ;;
+        --duration)         DURATION="$2";         shift 2 ;;
+        --auto-loop)        AUTO_LOOP=1;           shift   ;;
+        --extra)            EXTRA_ARGS="$2";       shift 2 ;;
+        --pjsua2-script)    PJSUA2_SCRIPT="$2";   shift 2 ;;
+        --help|-h)          usage ;;
         *)
             echo "Unknown option: $1" >&2
             usage
