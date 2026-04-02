@@ -142,6 +142,9 @@ class TlsServerUac:
             self._wait_for_tls_connection()
             self._make_call()
             self._wait_for_call_end()
+        except RuntimeError as e:
+            print(f"FATAL: {e}", file=sys.stderr)
+            self.call_success = False
         finally:
             self._print_results()
             self._shutdown()
@@ -231,8 +234,10 @@ class TlsServerUac:
                 pass
             time.sleep(0.2)
 
-        print(f"Warning: no incoming TLS connection detected within {timeout}s, "
-              f"proceeding anyway...", file=sys.stderr)
+        raise RuntimeError(
+            f"No incoming TLS connection within {timeout}s. "
+            f"Check that the remote side connects to {self.args.bind_ip or '0.0.0.0'}"
+            f":{self.args.listen_port}")
 
     def _make_call(self):
         """Send INVITE to remote host over the established TLS connection."""
