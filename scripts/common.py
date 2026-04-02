@@ -126,6 +126,100 @@ class EchoValidatorPort(pj.AudioMediaPort):
 
 
 # ---------------------------------------------------------------------------
+# OptionsPingManager
+# ---------------------------------------------------------------------------
+
+class OptionsPingManager:
+    """
+    Sends periodic in-dialog OPTIONS and tracks responses.
+    Also handles auto-reply to incoming OPTIONS.
+    """
+
+    OPTIONS_TIMEOUT = 5  # seconds to wait for response per OPTIONS
+
+    def __init__(self, interval, call_getter, ep):
+        """
+        Args:
+            interval: seconds between OPTIONS sends (None = don't send, just auto-reply)
+            call_getter: callable returning current pj.Call (or None)
+            ep: pj.Endpoint for sending
+        """
+        self.interval = interval
+        self.call_getter = call_getter
+        self.ep = ep
+        self.lock = threading.Lock()
+        self.sent = 0
+        self.received_ok = 0
+        self.timeout_count = 0
+        self._running = False
+        self._timer = None
+
+    def start(self):
+        """Start sending OPTIONS periodically."""
+        if self.interval is None or self.interval <= 0:
+            return
+        self._running = True
+        self._schedule_next()
+
+    def stop(self):
+        """Stop sending OPTIONS."""
+        self._running = False
+        if self._timer:
+            self._timer.cancel()
+
+    def _schedule_next(self):
+        if not self._running:
+            return
+        self._timer = threading.Timer(self.interval, self._send_options)
+        self._timer.start()
+
+    def _send_options(self):
+        if not self._running:
+            return
+        call = self.call_getter()
+        if call is None:
+            self._schedule_next()
+            return
+
+        try:
+            send_prm = pj.CallSendRequestParam()
+            send_prm.method = "OPTIONS"
+            call.sendRequest(send_prm)
+            with self.lock:
+                self.sent += 1
+            print(f"OPTIONS ping sent (#{self.sent}).", file=sys.stderr)
+        except Exception as e:
+            print(f"OPTIONS send error: {e}", file=sys.stderr)
+            with self.lock:
+                self.sent += 1
+                self.timeout_count += 1
+
+        self._schedule_next()
+
+    def on_options_response(self, status_code):
+        """Call this when a response to our OPTIONS is received."""
+        with self.lock:
+            if 200 <= status_code < 300:
+                self.received_ok += 1
+            else:
+                self.timeout_count += 1
+
+    def get_stats(self):
+        with self.lock:
+            total = self.received_ok + self.timeout_count
+            if total == 0:
+                pct = 100.0 if self.sent == 0 else 0.0
+            else:
+                pct = (self.received_ok / total) * 100.0
+            return {
+                "sent": self.sent,
+                "received_ok": self.received_ok,
+                "timeout": self.timeout_count,
+                "success_pct": pct,
+            }
+
+
+# ---------------------------------------------------------------------------
 # parse_sip_headers
 # ---------------------------------------------------------------------------
 
@@ -965,6 +1059,32 @@ def print_echo_results(validator: EchoValidatorPort, tolerance: float) -> bool:
     print(f"  Tolerance:         {tolerance}%", file=sys.stderr)
 
     passed = stats["match_pct"] >= tolerance
+    print(f"  RESULT: {'PASS' if passed else 'FAIL'}", file=sys.stderr)
+    print(f"{'=' * 50}\n", file=sys.stderr)
+    return passed
+
+
+def print_options_results(manager, tolerance: float) -> bool:
+    """
+    Print OPTIONS ping stats to stderr.
+    Returns True if success_pct >= tolerance, or if no OPTIONS were sent.
+    """
+    if manager is None:
+        return True  # OPTIONS not configured — pass
+
+    stats = manager.get_stats()
+    if stats["sent"] == 0:
+        return True  # Nothing sent — pass
+
+    print(f"\n{'=' * 50}", file=sys.stderr)
+    print("In-dialog OPTIONS Ping Results:", file=sys.stderr)
+    print(f"  OPTIONS sent:       {stats['sent']}", file=sys.stderr)
+    print(f"  Responses OK:       {stats['received_ok']}", file=sys.stderr)
+    print(f"  Timeouts/errors:    {stats['timeout']}", file=sys.stderr)
+    print(f"  Success rate:       {stats['success_pct']:.1f}%", file=sys.stderr)
+    print(f"  Tolerance:          {tolerance}%", file=sys.stderr)
+
+    passed = stats["success_pct"] >= tolerance
     print(f"  RESULT: {'PASS' if passed else 'FAIL'}", file=sys.stderr)
     print(f"{'=' * 50}\n", file=sys.stderr)
     return passed
