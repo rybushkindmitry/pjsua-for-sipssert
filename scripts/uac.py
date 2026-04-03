@@ -185,7 +185,8 @@ def main():
         # Build destination URI
         dest_uri = getattr(args, "dest_uri", "")
         if not dest_uri:
-            dest_uri = f"sip:test@{proxy}{tp_param}"
+            ruri_user = getattr(args, "ruri_user", "test")
+            dest_uri = f"sip:{ruri_user}@{proxy}{tp_param}"
 
         print(f"Making call to {dest_uri}...", file=sys.stderr)
 

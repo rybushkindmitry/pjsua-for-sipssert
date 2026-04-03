@@ -585,6 +585,7 @@ class ConfigLoader:
             "srtp": "srtp",
             "srtp_secure": "srtp_secure",
             "dest_uri": "dest_uri",
+            "ruri_user": "ruri_user",
             "log_level": "log_level",
             "bye": "bye",
             "wait_bye": "wait_bye",
@@ -697,6 +698,8 @@ def add_common_args(parser: argparse.ArgumentParser):
                         help="Local RTP port (0 = auto)")
     parser.add_argument("--dest-uri", default="",
                         help="Destination SIP URI")
+    parser.add_argument("--ruri-user", default="test",
+                        help="User part of Request-URI (default: test)")
 
     # Transport
     parser.add_argument("--transport", choices=["tls", "tcp", "udp"],

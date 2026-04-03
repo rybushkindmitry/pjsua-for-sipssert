@@ -285,7 +285,8 @@ def main():
         if not dest_uri:
             remote_host = args.remote_host
             remote_port = args.remote_port
-            dest_uri = f"sip:test@{remote_host}:{remote_port}"
+            ruri_user = getattr(args, "ruri_user", "test")
+            dest_uri = f"sip:{ruri_user}@{remote_host}:{remote_port}"
 
         print(f"Making call to {dest_uri}...", file=sys.stderr)
 
