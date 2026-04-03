@@ -34,9 +34,16 @@ from common import (
     safe_shutdown,
     safe_exit,
     print_echo_results,
+    print_options_results,
     EchoValidatorPort,
     HeaderManager,
     ConfigLoader,
+    OptionsPingManager,
+    apply_bye_default,
+    schedule_bye,
+    schedule_reinvites,
+    reconnect_media,
+    wait_for_completion,
 )
 
 import argparse
@@ -60,6 +67,8 @@ class App:
         self.call_completed = threading.Event()
         self.tls_ready = threading.Event()
         self.call_success = False
+        self.options_mgr = None
+        self.reinvite_timers = []
 
 
 # ---------------------------------------------------------------------------
@@ -106,31 +115,34 @@ class UacCall(pj.Call):
             ci = self.getInfo()
         except Exception:
             return
-
         print(f"Call state: {ci.stateText}", file=sys.stderr)
-
         if ci.state == pj.PJSIP_INV_STATE_CONFIRMED:
-            duration = self.app.args.duration
-            print(f"Call connected. Duration: {duration}s.", file=sys.stderr)
-            self.timer = threading.Timer(duration, self._hangup)
-            self.timer.start()
-
+            self.timer = schedule_bye(self, self.app, "uac")
+            self.app.reinvite_timers = schedule_reinvites(self, self.app, "uac")
+            if self.app.options_mgr:
+                self.app.options_mgr.start()
         elif ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
             print(f"Call disconnected (status {ci.lastStatusCode}).", file=sys.stderr)
             if self.timer:
                 self.timer.cancel()
+            for t in self.app.reinvite_timers:
+                t.cancel()
+            if self.app.options_mgr:
+                self.app.options_mgr.stop()
             self.app.call_completed.set()
 
     def onCallTsxState(self, prm):
-        """Check headers in 200 OK responses."""
         try:
             whole_msg = prm.e.body.tsxState.src.rdata.wholeMsg
             if whole_msg.startswith("SIP/2.0 2"):
-                print("Received 2xx response — checking headers...", file=sys.stderr)
-                results = self.app.header_mgr.check_headers(whole_msg)
-                self.app.header_results.extend(results)
+                tsx = prm.e.body.tsxState.tsx
+                if tsx.method == "OPTIONS" and self.app.options_mgr:
+                    self.app.options_mgr.on_options_response(tsx.statusCode)
+                else:
+                    print("Received 2xx response — checking headers...", file=sys.stderr)
+                    results = self.app.header_mgr.check_headers(whole_msg)
+                    self.app.header_results.extend(results)
         except Exception:
-            # Not all PJSUA2 versions expose rdata.wholeMsg — ignore silently
             pass
 
     def onCallMediaState(self, prm):
@@ -138,41 +150,16 @@ class UacCall(pj.Call):
             ci = self.getInfo()
         except Exception:
             return
-
         for mi_idx, mi in enumerate(ci.media):
             if mi.type != pj.PJMEDIA_TYPE_AUDIO:
                 continue
             if mi.status != pj.PJSUA_CALL_MEDIA_ACTIVE:
                 continue
-
             self.media_active = True
-            print(f"Audio media active (stream {mi_idx}). "
-                  f"Connecting echo validator...", file=sys.stderr)
-
             try:
-                aud_med = self.getAudioMedia(mi_idx)
-
-                validator = EchoValidatorPort()
-                validator.register("echo-validator")
-                self.app.validator = validator
-
-                # validator -> call (send pattern)
-                validator.startTransmit(aud_med)
-                # call -> validator (receive echo)
-                aud_med.startTransmit(validator)
-
-                print("Echo validator connected.", file=sys.stderr)
+                reconnect_media(self, self.app, mi_idx)
             except Exception as e:
                 print(f"Media setup error: {e}", file=sys.stderr)
-
-    def _hangup(self):
-        try:
-            prm = pj.CallOpParam()
-            prm.statusCode = pj.PJSIP_SC_OK
-            self.hangup(prm)
-        except pj.Error as e:
-            print(f"Hangup: {e}", file=sys.stderr)
-            self.app.call_completed.set()
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +211,7 @@ def main():
     header_mgr = HeaderManager(header_cfg)
 
     app = App(args, header_mgr)
+    apply_bye_default(args, "uac")
 
     rc = 1
     try:
@@ -284,6 +272,15 @@ def main():
         call = UacCall(app, account)
         app.call = call
 
+        # Init OPTIONS ping manager
+        if getattr(args, "options_ping", None) or getattr(args, "options_auto_reply", False):
+            options_mgr = OptionsPingManager(
+                interval=getattr(args, "options_ping", None),
+                call_getter=lambda: app.call,
+                ep=ep,
+            )
+            app.options_mgr = options_mgr
+
         try:
             prm = pj.CallOpParam(True)
             prm.txOption.headers = header_mgr.build_sip_headers()
@@ -292,14 +289,8 @@ def main():
             print(f"makeCall failed: {e}", file=sys.stderr)
             app.call_completed.set()
 
-        # Wait for call to finish
-        timeout = args.duration + 30
-        if app.call_completed.wait(timeout=timeout):
-            print("Call completed.", file=sys.stderr)
-        else:
-            print("Timeout waiting for call to complete.", file=sys.stderr)
+        completed = wait_for_completion(app, "uac")
 
-        # Evaluate results
         echo_ok = print_echo_results(app.validator, args.tolerance)
 
         header_ok = True
@@ -310,7 +301,10 @@ def main():
                   file=sys.stderr)
             header_ok = False
 
-        rc = 0 if (echo_ok and header_ok) else 1
+        options_ok = print_options_results(
+            app.options_mgr, getattr(args, "options_tolerance", 90.0))
+
+        rc = 0 if (echo_ok and header_ok and options_ok and completed) else 1
 
     except RuntimeError as e:
         print(f"FATAL: {e}", file=sys.stderr)
