@@ -52,18 +52,18 @@ CLI arguments take precedence over the config; header lists (`headers:`) are mer
 ```yaml
 mode: uac             # uac | uas | uas-tls-client | uac-tls-server
 transport: tls        # tls | tcp | udp (for uac/uas; TLS-role modes ignore this)
-proxy: 127.0.0.1:5061
-port: 5061
-ip: 0.0.0.0
-rtp_port: 16000
+proxy: 127.0.0.1:5061 # remote side address
+port: 5061            # local SIP/TLS port
+ip: 0.0.0.0           # bind to specific IP / interface
+rtp_port: 16000       # local RTP port (for host networking)
 dest_uri: ""          # full SIP URI (instead of proxy)
-duration: 10
-tolerance: 90
-wait_timeout: 30
-tls_wait: 10
+duration: 10          # call duration, sec
+tolerance: 90         # min match % for PASS (echo validation)
+wait_timeout: 30      # timeout for incoming call, sec (uas-tls-client)
+tls_wait: 10          # timeout for TLS connection, sec (uac-tls-server)
 srtp: mandatory       # off | optional | mandatory
-srtp_secure: 0        # 0 | 1 | 2
-log_level: 3
+srtp_secure: 0        # 0 = none, 1 = TLS required, 2 = end-to-end
+log_level: 3          # PJSIP log level 0-6
 bye: uac              # uac | uas | none (which side sends BYE)
 wait_bye: 30          # timeout for waiting BYE from remote side
 reinvite_by: uac      # uac | uas (which side sends re-INVITE)
@@ -73,29 +73,29 @@ options_auto_reply: true   # only reply to OPTIONS (don't send)
 options_tolerance: 90      # min % of successful OPTIONS responses
 
 tls:
-  ca_file: /home/certs/ca.pem
-  cert_file: /home/certs/cert.pem
-  privkey_file: /home/certs/key.pem
-  verify_server: false
-  verify_client: false
+  ca_file: /home/certs/ca.pem       # CA certificate
+  cert_file: /home/certs/cert.pem   # client/server certificate
+  privkey_file: /home/certs/key.pem # private key
+  verify_server: false              # verify server certificate
+  verify_client: false              # verify client certificate
 
 headers:
-  set:
+  set:                  # add headers to outgoing requests
     - "X-My-Header: value"
-  expect:
+  expect:               # verify header presence in response
     - "X-Response-Header"
-  expect_not:
+  expect_not:           # verify header absence
     - "X-Forbidden-Header"
-  expect_name_regex:
+  expect_name_regex:    # at least one header name matches regex
     - "^X-Custom-.*"
-  expect_not_regex:
+  expect_not_regex:     # no header name matches regex
     - "^X-Bad-.*"
-  expect_value:
+  expect_value:         # exact header value match (supports indexing)
     - "X-Response-Header: expected-value"
     - "Via[0]: SIP/2.0/TLS"
-  expect_value_regex:
+  expect_value_regex:   # header value matches regex
     - "X-Session-Id: [0-9a-f]{8}"
-  expect_count:
+  expect_count:         # header occurrence count (N, N+, N-M)
     - "Via: 2"    # exactly 2
     - "Via: 2+"   # at least 2
     - "Via: 1-3"  # 1 to 3

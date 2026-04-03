@@ -52,18 +52,18 @@ CLI-аргументы имеют приоритет над конфигом; с
 ```yaml
 mode: uac             # uac | uas | uas-tls-client | uac-tls-server
 transport: tls        # tls | tcp | udp (для uac/uas; tls-роли игнорируют)
-proxy: 127.0.0.1:5061
-port: 5061
-ip: 0.0.0.0
-rtp_port: 16000
+proxy: 127.0.0.1:5061 # адрес удалённой стороны
+port: 5061            # локальный SIP/TLS-порт
+ip: 0.0.0.0           # привязать к конкретному IP / интерфейсу
+rtp_port: 16000       # локальный RTP-порт (для host-сети)
 dest_uri: ""          # полный SIP URI (вместо proxy)
-duration: 10
-tolerance: 90
-wait_timeout: 30
-tls_wait: 10
+duration: 10          # длительность звонка, сек
+tolerance: 90         # мин. % совпадений для PASS (echo-валидация)
+wait_timeout: 30      # таймаут ожидания входящего звонка, сек (uas-tls-client)
+tls_wait: 10          # таймаут ожидания TLS-подключения, сек (uac-tls-server)
 srtp: mandatory       # off | optional | mandatory
-srtp_secure: 0        # 0 | 1 | 2
-log_level: 3
+srtp_secure: 0        # 0 = нет требований, 1 = требуется TLS, 2 = end-to-end
+log_level: 3          # уровень логирования PJSIP 0-6
 bye: uac              # uac | uas | none (кто отправляет BYE)
 wait_bye: 30          # таймаут ожидания BYE от удалённой стороны
 reinvite_by: uac      # uac | uas (кто отправляет re-INVITE)
@@ -73,29 +73,29 @@ options_auto_reply: true   # только отвечать на OPTIONS (без 
 options_tolerance: 90      # мин. % успешных ответов на OPTIONS
 
 tls:
-  ca_file: /home/certs/ca.pem
-  cert_file: /home/certs/cert.pem
-  privkey_file: /home/certs/key.pem
-  verify_server: false
-  verify_client: false
+  ca_file: /home/certs/ca.pem       # CA-сертификат
+  cert_file: /home/certs/cert.pem   # сертификат клиента/сервера
+  privkey_file: /home/certs/key.pem # приватный ключ
+  verify_server: false              # проверять сертификат сервера
+  verify_client: false              # проверять сертификат клиента
 
 headers:
-  set:
+  set:                  # добавить заголовки в исходящие запросы
     - "X-My-Header: value"
-  expect:
+  expect:               # проверить наличие заголовка в ответе
     - "X-Response-Header"
-  expect_not:
+  expect_not:           # проверить отсутствие заголовка
     - "X-Forbidden-Header"
-  expect_name_regex:
+  expect_name_regex:    # хотя бы одно имя заголовка соответствует regex
     - "^X-Custom-.*"
-  expect_not_regex:
+  expect_not_regex:     # ни одно имя заголовка не соответствует regex
     - "^X-Bad-.*"
-  expect_value:
+  expect_value:         # точное совпадение значения (поддерживает индексы)
     - "X-Response-Header: expected-value"
     - "Via[0]: SIP/2.0/TLS"
-  expect_value_regex:
+  expect_value_regex:   # значение заголовка соответствует regex
     - "X-Session-Id: [0-9a-f]{8}"
-  expect_count:
+  expect_count:         # количество вхождений заголовка (N, N+, N-M)
     - "Via: 2"    # ровно 2
     - "Via: 2+"   # не менее 2
     - "Via: 1-3"  # от 1 до 3
