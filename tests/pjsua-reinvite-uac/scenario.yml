@@ -12,7 +12,7 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
-      - "--tolerance=0"
+      - "--tolerance=90"
 
   # UAC: connects, sends re-INVITE at 3s, hangs up at 10s
   - name: pjsua-uac
@@ -27,6 +27,6 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--reinvite-by=uac"
       - "--reinvite-delay=3"

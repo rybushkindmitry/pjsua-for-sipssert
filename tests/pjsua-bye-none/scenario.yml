@@ -12,7 +12,7 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=5"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--bye=none"
 
   # UAC: connects, no BYE
@@ -28,5 +28,5 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=5"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--bye=none"

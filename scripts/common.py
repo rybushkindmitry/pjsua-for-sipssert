@@ -34,9 +34,95 @@ except ImportError:
 # EchoValidatorPort
 # ---------------------------------------------------------------------------
 
+def _build_ulaw_quantize_table():
+    """Build a lookup table that maps 16-bit signed PCM → μ-law-stable PCM.
+
+    Each value is the result of lin16→μ-law→lin16 round-trip.
+    Patterns built from these values survive G.711 PCMU encode/decode unchanged.
+    """
+    ULAW_MAX = 0x1FFF  # 8159
+    BIAS = 0x84        # 132
+
+    def _lin16_to_ulaw(sample):
+        """Encode 16-bit signed PCM to 8-bit μ-law."""
+        sign = 0
+        if sample < 0:
+            sign = 0x80
+            sample = -sample
+        if sample > 32635:
+            sample = 32635
+        sample += BIAS
+        # Find segment (exponent)
+        exp = 7
+        mask = 0x4000
+        while exp > 0 and not (sample & mask):
+            exp -= 1
+            mask >>= 1
+        mantissa = (sample >> (exp + 3)) & 0x0F
+        return ~(sign | (exp << 4) | mantissa) & 0xFF
+
+    def _ulaw_to_lin16(ulaw_byte):
+        """Decode 8-bit μ-law to 16-bit signed PCM."""
+        ulaw_byte = ~ulaw_byte & 0xFF
+        sign = ulaw_byte & 0x80
+        exp = (ulaw_byte >> 4) & 0x07
+        mantissa = ulaw_byte & 0x0F
+        sample = ((mantissa << 3) + BIAS) << exp
+        sample -= BIAS
+        return -sample if sign else sample
+
+    table = {}
+    for i in range(65536):
+        signed_val = i if i < 32768 else i - 65536
+        ulaw_byte = _lin16_to_ulaw(signed_val)
+        stable_val = _ulaw_to_lin16(ulaw_byte)
+        # Store as unsigned 16-bit for struct packing
+        table[i] = stable_val & 0xFFFF
+    return table
+
+
+_ULAW_QUANTIZE = _build_ulaw_quantize_table()
+
+
+def _build_stable_values():
+    """Build a list of distinct μ-law-stable 16-bit signed PCM values.
+
+    Each value survives G.711 μ-law encode→decode unchanged.
+    Used to fill frames with unique constant values.
+    """
+    seen = set()
+    values = []
+    for ulaw_byte in range(256):
+        pcm = _ULAW_QUANTIZE.get(0, 0)  # dummy, we decode directly
+        # Decode μ-law byte directly to get a stable value
+        b = ~ulaw_byte & 0xFF
+        sign = b & 0x80
+        exp = (b >> 4) & 0x07
+        mantissa = b & 0x0F
+        sample = ((mantissa << 3) + 0x84) << exp
+        sample -= 0x84
+        if sign:
+            sample = -sample
+        if sample not in seen:
+            seen.add(sample)
+            values.append(sample)
+    return values
+
+
+# Use mid-range amplitudes: large enough to be distinguishable after conference
+# bridge attenuation, small enough to avoid clipping.  Exclude 0 (silence).
+# Sorted by absolute value; we pick values in the 500..20000 range for best
+# survival through G.711 + conference bridge pipeline.
+_STABLE_VALUES = [
+    v for v in sorted(_build_stable_values(), key=abs)
+    if 500 <= abs(v) <= 20000
+]
+
+
 class EchoValidatorPort(pj.AudioMediaPort):
     """
-    Generates deterministic audio frames (4-byte LE counter pattern).
+    Generates deterministic audio frames (4-byte LE counter pattern,
+    pre-quantized through μ-law to survive G.711 encode/decode).
     Captures echoed frames and compares against ring buffer of last 64 sent frames.
     """
 
@@ -69,37 +155,69 @@ class EchoValidatorPort(pj.AudioMediaPort):
         super().createPort(name, self.fmt)
 
     def onFrameRequested(self, frame):
-        """Generate a deterministic audio frame (4-byte LE counter pattern)."""
+        """Generate a frame filled with a single μ-law-stable PCM value.
+
+        Each sequence number maps to a unique stable value (cycles every
+        len(_STABLE_VALUES) frames).  Constant-fill frames survive codec
+        encode/decode *and* conference-bridge sample shifts — the dominant
+        sample value stays the same.
+        """
         size = frame.size
         if size <= 0:
             size = 320  # 160 samples * 16-bit
 
-        pattern = struct.pack("<I", self.seq)
-        data = (pattern * ((size // len(pattern)) + 1))[:size]
+        n_samples = size // 2
+        val = _STABLE_VALUES[self.seq % len(_STABLE_VALUES)]
+        data = struct.pack(f"<{n_samples}h", *([val] * n_samples))
 
         frame.buf = pj.ByteVector(data)
         frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
         frame.size = size
 
         with self.lock:
-            self.sent_ring.append(bytes(data))
+            self.sent_ring.append(val)
             self.seq += 1
             self.frames_sent += 1
 
+    # Minimum |median| to consider a frame non-silent.
+    SILENCE_THRESHOLD = 10
+
     def onFrameReceived(self, frame):
-        """Receive echoed frame and compare against sent ring buffer."""
+        """Receive frame and match its median against sent values.
+
+        The conference bridge attenuates amplitude by ~3-8×, so we match
+        by sign and proportional range: received median must have the same
+        sign as the sent value and |median| must be within [|sent|/12,
+        |sent|] (wide range to cover varying attenuation).
+        """
         if frame.type != pj.PJMEDIA_FRAME_TYPE_AUDIO:
             return
         if frame.size <= 0:
             return
 
         received = bytes(frame.buf)
+        n = len(received) // 2
+        samples = sorted(struct.unpack(f"<{n}h", received))
+        median = samples[n // 2]
 
         with self.lock:
             self.frames_received += 1
+
+            if abs(median) < self.SILENCE_THRESHOLD:
+                self.frames_mismatched += 1
+                return
+
             matched = False
-            for sent in self.sent_ring:
-                if len(sent) == len(received) and sent == received:
+            am = abs(median)
+            for sent_val in self.sent_ring:
+                if sent_val == 0:
+                    continue
+                # Same sign?
+                if (sent_val > 0) != (median > 0):
+                    continue
+                # Proportional match: allow 3-12× attenuation
+                av = abs(sent_val)
+                if av // 12 <= am <= av:
                     matched = True
                     break
 

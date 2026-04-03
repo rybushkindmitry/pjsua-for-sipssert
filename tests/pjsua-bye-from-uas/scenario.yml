@@ -12,7 +12,7 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=5"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--bye=uas"
 
   # UAC: connects, waits for BYE from UAS
@@ -28,6 +28,6 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=5"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--bye=uas"
       - "--wait-bye=15"

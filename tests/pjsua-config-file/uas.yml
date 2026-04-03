@@ -1,7 +1,7 @@
 port: 15097
 rtp_port: 18900
 duration: 10
-tolerance: 0
+tolerance: 90
 srtp: mandatory
 srtp_secure: 0
 

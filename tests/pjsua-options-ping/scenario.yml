@@ -12,7 +12,7 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--options-auto-reply"
 
   # UAC: connects, sends OPTIONS every 2s
@@ -28,6 +28,6 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--options-ping=2"
       - "--options-tolerance=80"

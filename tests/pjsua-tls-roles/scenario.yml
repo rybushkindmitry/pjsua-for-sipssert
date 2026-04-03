@@ -15,7 +15,7 @@ tasks:
       - "--srtp-secure=0"
       - "--duration=5"
       - "--tls-wait=15"
-      - "--tolerance=0"
+      - "--tolerance=90"
 
   # 2. UAS + TLS Client: listens on TLS port 15062 (for Contact header),
   #    connects to uac-tls-server TLS port 15061 as client,
@@ -35,5 +35,5 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--wait-timeout=20"

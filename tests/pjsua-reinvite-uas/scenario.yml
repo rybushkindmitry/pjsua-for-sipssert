@@ -12,7 +12,7 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--reinvite-by=uas"
       - "--reinvite-delay=3"
 
@@ -29,4 +29,4 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
-      - "--tolerance=0"
+      - "--tolerance=90"

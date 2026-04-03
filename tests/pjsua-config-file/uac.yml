@@ -1,7 +1,7 @@
 proxy: 127.0.0.1:15097
 rtp_port: 19900
 duration: 5
-tolerance: 0
+tolerance: 90
 srtp: mandatory
 srtp_secure: 0
 

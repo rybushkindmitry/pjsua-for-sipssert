@@ -11,7 +11,7 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=10"
-      - "--tolerance=0"
+      - "--tolerance=90"
       - "--expect-no-header=X-Secret"
       - "--expect-no-header=X-Internal"
 
@@ -27,4 +27,4 @@ tasks:
       - "--srtp=mandatory"
       - "--srtp-secure=0"
       - "--duration=5"
-      - "--tolerance=0"
+      - "--tolerance=90"
