@@ -126,6 +126,105 @@ class EchoValidatorPort(pj.AudioMediaPort):
 
 
 # ---------------------------------------------------------------------------
+# OptionsPingManager
+# ---------------------------------------------------------------------------
+
+class OptionsPingManager:
+    """
+    Sends periodic in-dialog OPTIONS and tracks responses.
+    Also handles auto-reply to incoming OPTIONS.
+    """
+
+    def __init__(self, interval, call_getter, ep):
+        """
+        Args:
+            interval: seconds between OPTIONS sends (None = don't send, just auto-reply)
+            call_getter: callable returning current pj.Call (or None)
+            ep: pj.Endpoint for sending
+        """
+        self.interval = interval
+        self.call_getter = call_getter
+        self.ep = ep
+        self.lock = threading.Lock()
+        self.sent = 0
+        self.received_ok = 0
+        self.timeout_count = 0
+        self._running = False
+        self._timer = None
+
+    def start(self):
+        """Start sending OPTIONS periodically."""
+        if self.interval is None or self.interval <= 0:
+            return
+        self._running = True
+        self._schedule_next()
+
+    def stop(self):
+        """Stop sending OPTIONS."""
+        self._running = False
+        if self._timer:
+            self._timer.cancel()
+
+    def _schedule_next(self):
+        if not self._running:
+            return
+        self._timer = threading.Timer(self.interval, self._send_options)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _send_options(self):
+        if not self._running:
+            return
+        call = self.call_getter()
+        if call is None:
+            self._schedule_next()
+            return
+
+        try:
+            send_prm = pj.CallSendRequestParam()
+            send_prm.method = "OPTIONS"
+            call.sendRequest(send_prm)
+            with self.lock:
+                self.sent += 1
+            print(f"OPTIONS ping sent (#{self.sent}).", file=sys.stderr)
+        except Exception as e:
+            print(f"OPTIONS send error: {e}", file=sys.stderr)
+            with self.lock:
+                self.sent += 1
+                self.timeout_count += 1
+
+        self._schedule_next()
+
+    def on_options_response(self, status_code):
+        """Call this when a response to our OPTIONS is received."""
+        with self.lock:
+            if 200 <= status_code < 300:
+                self.received_ok += 1
+            else:
+                self.timeout_count += 1
+
+    def finalize(self):
+        """Count pending (unresponded) OPTIONS as timeouts."""
+        with self.lock:
+            pending = self.sent - self.received_ok - self.timeout_count
+            if pending > 0:
+                self.timeout_count += pending
+
+    def get_stats(self):
+        with self.lock:
+            if self.sent == 0:
+                pct = 100.0
+            else:
+                pct = (self.received_ok / self.sent) * 100.0
+            return {
+                "sent": self.sent,
+                "received_ok": self.received_ok,
+                "timeout": self.timeout_count,
+                "success_pct": pct,
+            }
+
+
+# ---------------------------------------------------------------------------
 # parse_sip_headers
 # ---------------------------------------------------------------------------
 
@@ -487,6 +586,13 @@ class ConfigLoader:
             "srtp_secure": "srtp_secure",
             "dest_uri": "dest_uri",
             "log_level": "log_level",
+            "bye": "bye",
+            "wait_bye": "wait_bye",
+            "reinvite_by": "reinvite_by",
+            "reinvite_delay": "reinvite_delay",
+            "options_ping": "options_ping",
+            "options_auto_reply": "options_auto_reply",
+            "options_tolerance": "options_tolerance",
         }
 
         for cfg_key, arg_attr in flat_map.items():
@@ -614,6 +720,26 @@ def add_common_args(parser: argparse.ArgumentParser):
                         help="Max seconds to wait for incoming call (default: 30)")
     parser.add_argument("--tls-wait", type=int, default=None,
                         help="Max seconds to wait for TLS connection (default: 10)")
+
+    # BYE control
+    parser.add_argument("--bye", choices=["uac", "uas", "none"],
+                        default=None, help="Who sends BYE (default: depends on mode)")
+    parser.add_argument("--wait-bye", type=int, default=None,
+                        help="Timeout waiting for BYE from remote (default: 30)")
+
+    # re-INVITE
+    parser.add_argument("--reinvite-by", choices=["uac", "uas"],
+                        default=None, help="Who sends re-INVITE")
+    parser.add_argument("--reinvite-delay", default=None,
+                        help="Delay(s) in seconds after media, comma-separated (e.g. 3 or 3,7,12)")
+
+    # In-dialog OPTIONS ping
+    parser.add_argument("--options-ping", type=int, default=None,
+                        help="Send OPTIONS every N seconds (also enables auto-reply)")
+    parser.add_argument("--options-auto-reply", action="store_true",
+                        help="Auto-reply 200 OK to incoming OPTIONS (no send)")
+    parser.add_argument("--options-tolerance", type=float, default=None,
+                        help="Min %% of successful OPTIONS responses (default: 90)")
 
     # Header checks
     parser.add_argument("--set-header", action="append", metavar="NAME: VALUE",
@@ -764,6 +890,161 @@ def safe_exit(rc: int):
 
 
 # ---------------------------------------------------------------------------
+# BYE control helpers
+# ---------------------------------------------------------------------------
+
+def apply_bye_default(args, role: str):
+    """Set --bye default based on script role if not explicitly set."""
+    if getattr(args, "bye", None) is None:
+        args.bye = role
+
+
+def schedule_bye(call, app, role: str):
+    """
+    Schedule BYE based on --bye arg and script role.
+
+    If bye == role: start timer to send BYE after --duration seconds.
+    If bye != role and bye != 'none': do nothing (wait for remote BYE).
+    If bye == 'none': do nothing.
+
+    Returns the Timer if one was started, else None.
+    """
+    bye = getattr(app.args, "bye", role)
+    if bye == role:
+        duration = app.args.duration
+        print(f"Will send BYE in {duration}s.", file=sys.stderr)
+        timer = threading.Timer(duration, _do_hangup, args=(call, app))
+        timer.daemon = True
+        timer.start()
+        return timer
+    elif bye == "none":
+        print(f"BYE=none: will not send BYE.", file=sys.stderr)
+        return None
+    else:
+        print(f"Waiting for BYE from remote side.", file=sys.stderr)
+        return None
+
+
+def _do_hangup(call, app):
+    """Hangup callback for BYE timer."""
+    try:
+        prm = pj.CallOpParam()
+        prm.statusCode = pj.PJSIP_SC_OK
+        call.hangup(prm)
+    except Exception as e:
+        print(f"Hangup error: {e}", file=sys.stderr)
+        app.call_completed.set()
+
+
+def wait_for_completion(app, role: str):
+    """
+    Wait for call to complete, respecting --bye and --wait-bye.
+
+    Returns True if call completed normally, False if timed out.
+    """
+    bye = getattr(app.args, "bye", role)
+    duration = app.args.duration
+    wait_bye = getattr(app.args, "wait_bye", 30)
+
+    if bye == role:
+        # We send BYE — wait for duration + reasonable margin
+        timeout = duration + 30
+        if app.call_completed.wait(timeout=timeout):
+            print("Call completed.", file=sys.stderr)
+            return True
+        else:
+            print("Timeout waiting for call to complete.", file=sys.stderr)
+            return False
+    elif bye == "none":
+        # No BYE — just wait for duration (media collection), then exit
+        if app.call_completed.wait(timeout=duration):
+            print("Call completed (unexpected BYE received).", file=sys.stderr)
+        else:
+            print(f"Duration {duration}s elapsed, no BYE sent (bye=none).",
+                  file=sys.stderr)
+        return True
+    else:
+        # Remote sends BYE — wait duration + wait_bye
+        timeout = duration + wait_bye
+        if app.call_completed.wait(timeout=timeout):
+            print("Call completed (BYE from remote).", file=sys.stderr)
+            return True
+        else:
+            print(f"Timeout waiting for BYE from remote side "
+                  f"(waited {timeout}s).", file=sys.stderr)
+            return False
+
+
+# ---------------------------------------------------------------------------
+# re-INVITE helpers
+# ---------------------------------------------------------------------------
+
+def schedule_reinvites(call, app, role: str):
+    """
+    Schedule re-INVITE timers if --reinvite-by matches this script's role.
+
+    Returns list of Timer objects (empty if not applicable).
+    """
+    reinvite_by = getattr(app.args, "reinvite_by", None)
+    delays = getattr(app.args, "reinvite_delays", [])
+
+    if reinvite_by != role or not delays:
+        return []
+
+    timers = []
+    for delay in delays:
+        print(f"Scheduling re-INVITE in {delay}s.", file=sys.stderr)
+        t = threading.Timer(delay, _do_reinvite, args=(call,))
+        t.daemon = True
+        t.start()
+        timers.append(t)
+    return timers
+
+
+def _do_reinvite(call):
+    """Send re-INVITE (re-negotiation without SDP changes)."""
+    try:
+        prm = pj.CallOpParam(True)
+        call.reinvite(prm)
+        print("re-INVITE sent.", file=sys.stderr)
+    except Exception as e:
+        print(f"re-INVITE error: {e}", file=sys.stderr)
+
+
+def reconnect_media(call, app, mi_idx):
+    """
+    Connect or reconnect EchoValidatorPort to audio media.
+
+    If app.validator already exists, reuse it (re-INVITE case).
+    Otherwise create a new one.
+
+    Returns the validator.
+    """
+    aud_med = call.getAudioMedia(mi_idx)
+
+    if app.validator is not None:
+        # re-INVITE: reuse existing validator.
+        # Old media object is invalid after re-INVITE — PJSUA2 replaces it.
+        # No need to stopTransmit on old media; just connect to new aud_med.
+        print(f"Re-connecting echo validator (stream {mi_idx})...", file=sys.stderr)
+        validator = app.validator
+    else:
+        # Initial INVITE: create new validator
+        print(f"Audio media active (stream {mi_idx}). Connecting echo validator...",
+              file=sys.stderr)
+        validator = EchoValidatorPort()
+        validator.register("echo-validator")
+        app.validator = validator
+
+    # Connect bidirectional media
+    validator.startTransmit(aud_med)
+    aud_med.startTransmit(validator)
+
+    print("Echo validator connected.", file=sys.stderr)
+    return validator
+
+
+# ---------------------------------------------------------------------------
 # Echo result helpers
 # ---------------------------------------------------------------------------
 
@@ -792,6 +1073,33 @@ def print_echo_results(validator: EchoValidatorPort, tolerance: float) -> bool:
     return passed
 
 
+def print_options_results(manager, tolerance: float) -> bool:
+    """
+    Print OPTIONS ping stats to stderr.
+    Returns True if success_pct >= tolerance, or if no OPTIONS were sent.
+    """
+    if manager is None:
+        return True  # OPTIONS not configured — pass
+
+    manager.finalize()  # count pending as timeouts
+    stats = manager.get_stats()
+    if stats["sent"] == 0:
+        return True  # Nothing sent — pass
+
+    print(f"\n{'=' * 50}", file=sys.stderr)
+    print("In-dialog OPTIONS Ping Results:", file=sys.stderr)
+    print(f"  OPTIONS sent:       {stats['sent']}", file=sys.stderr)
+    print(f"  Responses OK:       {stats['received_ok']}", file=sys.stderr)
+    print(f"  Timeouts/errors:    {stats['timeout']}", file=sys.stderr)
+    print(f"  Success rate:       {stats['success_pct']:.1f}%", file=sys.stderr)
+    print(f"  Tolerance:          {tolerance}%", file=sys.stderr)
+
+    passed = stats["success_pct"] >= tolerance
+    print(f"  RESULT: {'PASS' if passed else 'FAIL'}", file=sys.stderr)
+    print(f"{'=' * 50}\n", file=sys.stderr)
+    return passed
+
+
 # ---------------------------------------------------------------------------
 # load_config_and_args
 # ---------------------------------------------------------------------------
@@ -804,6 +1112,8 @@ _ARG_DEFAULTS = {
     "tolerance": 90.0,
     "wait_timeout": 30,
     "tls_wait": 10,
+    "wait_bye": 30,
+    "options_tolerance": 90.0,
 }
 
 
@@ -815,6 +1125,34 @@ def _apply_arg_defaults(args: argparse.Namespace):
     for attr, default in _ARG_DEFAULTS.items():
         if getattr(args, attr, None) is None:
             setattr(args, attr, default)
+
+    # Parse reinvite_delay string into list of floats
+    if getattr(args, "reinvite_delay", None) is not None:
+        raw = str(args.reinvite_delay)
+        try:
+            args.reinvite_delays = [float(x.strip()) for x in raw.split(",")]
+        except ValueError:
+            print(f"ERROR: invalid --reinvite-delay value: {raw}", file=sys.stderr)
+            safe_exit(1)
+    else:
+        args.reinvite_delays = []
+
+    # Validate: reinvite-delay requires reinvite-by and vice versa
+    has_delay = len(args.reinvite_delays) > 0
+    has_by = getattr(args, "reinvite_by", None) is not None
+    if has_delay and not has_by:
+        print("ERROR: --reinvite-delay requires --reinvite-by", file=sys.stderr)
+        safe_exit(1)
+    if has_by and not has_delay:
+        print("ERROR: --reinvite-by requires --reinvite-delay", file=sys.stderr)
+        safe_exit(1)
+
+    # Warn if any reinvite delay >= duration
+    duration = getattr(args, "duration", 10)
+    for d in args.reinvite_delays:
+        if d >= duration:
+            print(f"WARNING: --reinvite-delay={d} >= --duration={duration}, "
+                  f"re-INVITE may not execute", file=sys.stderr)
 
 
 def load_config_and_args(description: str):

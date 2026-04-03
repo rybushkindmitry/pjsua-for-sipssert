@@ -38,9 +38,16 @@ from common import (
     safe_shutdown,
     safe_exit,
     print_echo_results,
+    print_options_results,
     EchoValidatorPort,
     HeaderManager,
     ConfigLoader,
+    OptionsPingManager,
+    apply_bye_default,
+    schedule_bye,
+    schedule_reinvites,
+    reconnect_media,
+    wait_for_completion,
 )
 
 import argparse
@@ -62,6 +69,9 @@ class App:
         self.header_results = []
         self.call_completed = threading.Event()
         self.call_success = False
+        self.options_mgr = None
+        self.reinvite_timers = []
+        self.active_call = None
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +95,7 @@ class UasAccount(pj.Account):
         # Answer with 200 OK + custom headers
         call = UasCall(app, self, prm.callId)
         self.active_call = call
+        app.active_call = call
 
         call_prm = pj.CallOpParam(True)
         call_prm.statusCode = pj.PJSIP_SC_OK
@@ -108,18 +119,33 @@ class UasCall(pj.Call):
     def onCallState(self, prm):
         ci = self.getInfo()
         print(f"Call state: {ci.stateText}", file=sys.stderr)
-
         if ci.state == pj.PJSIP_INV_STATE_CONFIRMED:
-            duration = self.app.args.duration
-            print(f"Call connected. Duration: {duration}s.", file=sys.stderr)
-            self.timer = threading.Timer(duration, self._hangup)
-            self.timer.start()
-
+            self.timer = schedule_bye(self, self.app, "uas")
+            self.app.reinvite_timers = schedule_reinvites(self, self.app, "uas")
+            if self.app.options_mgr:
+                self.app.options_mgr.start()
         elif ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
             print(f"Call disconnected (status {ci.lastStatusCode}).", file=sys.stderr)
             if self.timer:
                 self.timer.cancel()
+            for t in self.app.reinvite_timers:
+                t.cancel()
+            if self.app.options_mgr:
+                self.app.options_mgr.stop()
             self.app.call_completed.set()
+
+    def onCallTsxState(self, prm):
+        """Track OPTIONS responses for OptionsPingManager."""
+        if not self.app.options_mgr:
+            return
+        try:
+            whole_msg = prm.e.body.tsxState.src.rdata.wholeMsg
+            if whole_msg.startswith("SIP/2.0 2"):
+                tsx = prm.e.body.tsxState.tsx
+                if tsx.method == "OPTIONS":
+                    self.app.options_mgr.on_options_response(tsx.statusCode)
+        except Exception:
+            pass
 
     def onCallMediaState(self, prm):
         ci = self.getInfo()
@@ -128,35 +154,11 @@ class UasCall(pj.Call):
                 continue
             if mi.status != pj.PJSUA_CALL_MEDIA_ACTIVE:
                 continue
-
             self.media_active = True
-            print(f"Audio media active (stream {mi_idx}). "
-                  f"Connecting echo validator...", file=sys.stderr)
-
             try:
-                aud_med = self.getAudioMedia(mi_idx)
-
-                validator = EchoValidatorPort()
-                validator.register("echo-validator")
-                self.app.validator = validator
-
-                # validator -> call (send known pattern to remote)
-                validator.startTransmit(aud_med)
-                # call -> validator (receive echo from remote)
-                aud_med.startTransmit(validator)
-
-                print("Echo validator connected.", file=sys.stderr)
+                reconnect_media(self, self.app, mi_idx)
             except Exception as e:
                 print(f"Media setup error: {e}", file=sys.stderr)
-
-    def _hangup(self):
-        try:
-            prm = pj.CallOpParam()
-            prm.statusCode = pj.PJSIP_SC_OK
-            self.hangup(prm)
-        except pj.Error as e:
-            print(f"Hangup: {e}", file=sys.stderr)
-            self.app.call_completed.set()
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +210,7 @@ def main():
     header_mgr = HeaderManager(header_cfg)
 
     app = App(args, header_mgr)
+    apply_bye_default(args, "uas")
 
     rc = 1
     try:
@@ -245,6 +248,15 @@ def main():
         account.create(acfg)
         app.account = account
 
+        # Init OPTIONS ping manager
+        if getattr(args, "options_ping", None) or getattr(args, "options_auto_reply", False):
+            options_mgr = OptionsPingManager(
+                interval=getattr(args, "options_ping", None),
+                call_getter=lambda: app.active_call,
+                ep=ep,
+            )
+            app.options_mgr = options_mgr
+
         # Force TLS handshake via probe INVITE
         _establish_tls_connection(account, args)
 
@@ -255,8 +267,13 @@ def main():
 
         got_call = app.call_completed.wait(timeout=wait_timeout)
 
-        if not got_call:
+        if not got_call and app.active_call is None:
             print("Timeout: no incoming call received.", file=sys.stderr)
+        elif not got_call:
+            completed = wait_for_completion(app, "uas")
+            got_call = completed
+        else:
+            got_call = True
 
         # Evaluate results
         echo_passed = print_echo_results(app.validator, args.tolerance)
@@ -269,7 +286,10 @@ def main():
             print("  No call received — headers could not be checked.", file=sys.stderr)
             header_passed = False
 
-        rc = 0 if (echo_passed and header_passed and got_call) else 1
+        options_passed = print_options_results(
+            app.options_mgr, getattr(args, "options_tolerance", 90.0))
+
+        rc = 0 if (echo_passed and header_passed and options_passed and got_call) else 1
 
     except Exception as e:
         print(f"FATAL: {e}", file=sys.stderr)
