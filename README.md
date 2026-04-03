@@ -472,7 +472,7 @@ Both formats are supported: `--key=value` and `--key value`.
 | `--transport` | `tls`, `tcp`, `udp` (for uac/uas; TLS-role modes use TLS) | `tls` |
 | `--proxy HOST:PORT` | Remote side address | - |
 | `--port PORT` | Local SIP/TLS port | 5060 / 5061 |
-| `--ip ADDR` | Bind to a specific IP / interface | 0.0.0.0 |
+| `--bind-ip ADDR` | Bind to a specific IP / interface | 0.0.0.0 |
 | `--rtp-port PORT` | Local RTP port (for host networking) | auto |
 | `--duration SEC` | Call duration | 10 |
 | `--dest-uri URI` | Full SIP URI (instead of --proxy) | - |

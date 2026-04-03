@@ -664,6 +664,17 @@ def _is_default(value) -> bool:
     return False
 
 
+def _parse_bool(value):
+    """Parse boolean from string: true/false/yes/no/1/0."""
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ("true", "yes", "1"):
+        return True
+    if value.lower() in ("false", "no", "0"):
+        return False
+    raise argparse.ArgumentTypeError(f"Boolean value expected, got '{value}'")
+
+
 # ---------------------------------------------------------------------------
 # add_common_args
 # ---------------------------------------------------------------------------
@@ -690,7 +701,8 @@ def add_common_args(parser: argparse.ArgumentParser):
     # Transport
     parser.add_argument("--transport", choices=["tls", "tcp", "udp"],
                         default=None, help="SIP transport: tls (default), tcp, udp")
-    parser.add_argument("--tls", action="store_true",
+    parser.add_argument("--tls", nargs="?", const=True, default=False,
+                        type=_parse_bool,
                         help="Use TLS transport (same as --transport=tls, kept for compatibility)")
 
     # TLS
@@ -700,9 +712,11 @@ def add_common_args(parser: argparse.ArgumentParser):
                         help="TLS certificate file")
     parser.add_argument("--tls-privkey-file", default="",
                         help="TLS private key file")
-    parser.add_argument("--tls-verify-server", action="store_true",
+    parser.add_argument("--tls-verify-server", nargs="?", const=True, default=False,
+                        type=_parse_bool,
                         help="Verify server TLS certificate")
-    parser.add_argument("--tls-verify-client", action="store_true",
+    parser.add_argument("--tls-verify-client", nargs="?", const=True, default=False,
+                        type=_parse_bool,
                         help="Verify client TLS certificate (mTLS)")
 
     # SRTP
@@ -736,7 +750,8 @@ def add_common_args(parser: argparse.ArgumentParser):
     # In-dialog OPTIONS ping
     parser.add_argument("--options-ping", type=int, default=None,
                         help="Send OPTIONS every N seconds (also enables auto-reply)")
-    parser.add_argument("--options-auto-reply", action="store_true",
+    parser.add_argument("--options-auto-reply", nargs="?", const=True, default=False,
+                        type=_parse_bool,
                         help="Auto-reply 200 OK to incoming OPTIONS (no send)")
     parser.add_argument("--options-tolerance", type=float, default=None,
                         help="Min %% of successful OPTIONS responses (default: 90)")
