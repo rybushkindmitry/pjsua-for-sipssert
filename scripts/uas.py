@@ -130,6 +130,19 @@ class UasCall(pj.Call):
                 self.app.options_mgr.stop()
             self.app.call_completed.set()
 
+    def onCallTsxState(self, prm):
+        """Track OPTIONS responses for OptionsPingManager."""
+        if not self.app.options_mgr:
+            return
+        try:
+            whole_msg = prm.e.body.tsxState.src.rdata.wholeMsg
+            if whole_msg.startswith("SIP/2.0 2"):
+                tsx = prm.e.body.tsxState.tsx
+                if tsx.method == "OPTIONS":
+                    self.app.options_mgr.on_options_response(tsx.statusCode)
+        except Exception:
+            pass
+
     def onCallMediaState(self, prm):
         ci = self.getInfo()
         for mi_idx, mi in enumerate(ci.media):

@@ -169,6 +169,7 @@ class OptionsPingManager:
         if not self._running:
             return
         self._timer = threading.Timer(self.interval, self._send_options)
+        self._timer.daemon = True
         self._timer.start()
 
     def _send_options(self):
@@ -913,6 +914,7 @@ def schedule_bye(call, app, role: str):
         duration = app.args.duration
         print(f"Will send BYE in {duration}s.", file=sys.stderr)
         timer = threading.Timer(duration, _do_hangup, args=(call, app))
+        timer.daemon = True
         timer.start()
         return timer
     elif bye == "none":
@@ -993,6 +995,7 @@ def schedule_reinvites(call, app, role: str):
     for delay in delays:
         print(f"Scheduling re-INVITE in {delay}s.", file=sys.stderr)
         t = threading.Timer(delay, _do_reinvite, args=(call,))
+        t.daemon = True
         t.start()
         timers.append(t)
     return timers
@@ -1020,15 +1023,11 @@ def reconnect_media(call, app, mi_idx):
     aud_med = call.getAudioMedia(mi_idx)
 
     if app.validator is not None:
-        # re-INVITE: disconnect old media, reconnect existing validator
+        # re-INVITE: reuse existing validator.
+        # Old media object is invalid after re-INVITE — PJSUA2 replaces it.
+        # No need to stopTransmit on old media; just connect to new aud_med.
         print(f"Re-connecting echo validator (stream {mi_idx})...", file=sys.stderr)
         validator = app.validator
-        try:
-            # Stop old transmit paths (may fail if old media is already gone)
-            validator.stopTransmit(aud_med)
-            aud_med.stopTransmit(validator)
-        except Exception:
-            pass
     else:
         # Initial INVITE: create new validator
         print(f"Audio media active (stream {mi_idx}). Connecting echo validator...",
