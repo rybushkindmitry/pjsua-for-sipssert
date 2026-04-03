@@ -839,8 +839,8 @@ def create_transport(ep, args, port=None):
 
 def configure_srtp(acfg: pj.AccountConfig, srtp: str, srtp_secure: int):
     """Set SRTP on AccountConfig."""
-    acfg.mediaConfig.srtpUse = SRTP_MAP.get(srtp, pj.PJMEDIA_SRTP_DISABLED)
-    acfg.mediaConfig.srtpSecureSignaling = srtp_secure
+    acfg.mediaConfig.srtpUse = SRTP_MAP.get(srtp or "off", pj.PJMEDIA_SRTP_DISABLED)
+    acfg.mediaConfig.srtpSecureSignaling = srtp_secure if srtp_secure is not None else 0
 
 
 def configure_tls(tp_cfg: pj.TransportConfig, args: argparse.Namespace):
