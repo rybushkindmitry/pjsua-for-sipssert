@@ -72,6 +72,26 @@ class App:
 
 
 # ---------------------------------------------------------------------------
+# Endpoint — detect incoming TLS connections
+# ---------------------------------------------------------------------------
+
+class TlsServerEndpoint(pj.Endpoint):
+    """Endpoint subclass that signals tls_ready on incoming TLS connection."""
+
+    def __init__(self):
+        super().__init__()
+        self.tls_ready_event = None
+
+    def onTransportState(self, prm):
+        if (self.tls_ready_event
+                and not self.tls_ready_event.is_set()
+                and prm.state == pj.PJSIP_TP_STATE_CONNECTED):
+            print("TLS client connected (transport state: CONNECTED).",
+                  file=sys.stderr)
+            self.tls_ready_event.set()
+
+
+# ---------------------------------------------------------------------------
 # Account
 # ---------------------------------------------------------------------------
 
@@ -81,22 +101,21 @@ class UacAccount(pj.Account):
         self.app = app
 
     def onIncomingCall(self, prm):
-        """Incoming call = TLS connection is established.
+        """Incoming call — reject it (probe from uas-tls-client or stray INVITE).
 
-        Before _make_call: reject it (probe from uas-tls-client).
-        After _make_call: should not happen in this mode.
+        Also signals tls_ready as a fallback (probe mechanism).
         """
         if not self.app.tls_ready.is_set():
             print("Received probe call — TLS connection confirmed.", file=sys.stderr)
             self.app.tls_ready.set()
-            # Reject the probe
-            call = pj.Call(self, prm.callId)
-            reject = pj.CallOpParam()
-            reject.statusCode = pj.PJSIP_SC_BUSY_HERE
-            try:
-                call.hangup(reject)
-            except pj.Error:
-                pass
+        # Reject the probe
+        call = pj.Call(self, prm.callId)
+        reject = pj.CallOpParam()
+        reject.statusCode = pj.PJSIP_SC_BUSY_HERE
+        try:
+            call.hangup(reject)
+        except pj.Error:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -215,8 +234,10 @@ def main():
 
     rc = 1
     try:
-        # Init endpoint
-        ep = init_endpoint(args)
+        # Init endpoint with TLS connection detection
+        ep = TlsServerEndpoint()
+        ep.tls_ready_event = app.tls_ready
+        ep = init_endpoint(args, ep=ep)
         app.ep = ep
 
         # Create TLS transport (TLS server role — listen on listen_port)

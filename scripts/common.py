@@ -848,9 +848,14 @@ def configure_tls(tp_cfg: pj.TransportConfig, args: argparse.Namespace):
 # Endpoint helpers
 # ---------------------------------------------------------------------------
 
-def init_endpoint(args: argparse.Namespace) -> pj.Endpoint:
-    """Create Endpoint, init, setNullDev, start. Returns endpoint."""
-    ep = pj.Endpoint()
+def init_endpoint(args: argparse.Namespace, ep: pj.Endpoint = None) -> pj.Endpoint:
+    """Create Endpoint, init, setNullDev, start. Returns endpoint.
+
+    If *ep* is given (e.g. a subclass instance), it is used instead of
+    creating a new pj.Endpoint().
+    """
+    if ep is None:
+        ep = pj.Endpoint()
     ep_cfg = pj.EpConfig()
     log_level = getattr(args, "log_level", 3)
     ep_cfg.logConfig.level = log_level
