@@ -135,8 +135,6 @@ class OptionsPingManager:
     Also handles auto-reply to incoming OPTIONS.
     """
 
-    OPTIONS_TIMEOUT = 5  # seconds to wait for response per OPTIONS
-
     def __init__(self, interval, call_getter, ep):
         """
         Args:
@@ -204,13 +202,19 @@ class OptionsPingManager:
             else:
                 self.timeout_count += 1
 
+    def finalize(self):
+        """Count pending (unresponded) OPTIONS as timeouts."""
+        with self.lock:
+            pending = self.sent - self.received_ok - self.timeout_count
+            if pending > 0:
+                self.timeout_count += pending
+
     def get_stats(self):
         with self.lock:
-            total = self.received_ok + self.timeout_count
-            if total == 0:
-                pct = 100.0 if self.sent == 0 else 0.0
+            if self.sent == 0:
+                pct = 100.0
             else:
-                pct = (self.received_ok / total) * 100.0
+                pct = (self.received_ok / self.sent) * 100.0
             return {
                 "sent": self.sent,
                 "received_ok": self.received_ok,
@@ -1016,9 +1020,15 @@ def reconnect_media(call, app, mi_idx):
     aud_med = call.getAudioMedia(mi_idx)
 
     if app.validator is not None:
-        # re-INVITE: reconnect existing validator
+        # re-INVITE: disconnect old media, reconnect existing validator
         print(f"Re-connecting echo validator (stream {mi_idx})...", file=sys.stderr)
         validator = app.validator
+        try:
+            # Stop old transmit paths (may fail if old media is already gone)
+            validator.stopTransmit(aud_med)
+            aud_med.stopTransmit(validator)
+        except Exception:
+            pass
     else:
         # Initial INVITE: create new validator
         print(f"Audio media active (stream {mi_idx}). Connecting echo validator...",
@@ -1072,6 +1082,7 @@ def print_options_results(manager, tolerance: float) -> bool:
     if manager is None:
         return True  # OPTIONS not configured — pass
 
+    manager.finalize()  # count pending as timeouts
     stats = manager.get_stats()
     if stats["sent"] == 0:
         return True  # Nothing sent — pass
