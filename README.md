@@ -461,6 +461,14 @@ RTP/SRTP Echo Validation Results:
 
 Exit code: `0` = PASS, `1` = FAIL. Compatible with sipssert (exit code determines test result).
 
+Exit code `0` requires **all** of the following:
+- **Call completed** — call was established and terminated normally
+- **Echo validation** — RTP match rate ≥ `--tolerance` (default 90%), or no media was expected
+- **Header checks** — all `--expect-header*` checks passed (if configured)
+- **OPTIONS ping** — success rate ≥ `--options-tolerance` (default 90%), if `--options-ping` is configured
+
+If any condition fails, or the call fails to connect, exit code is `1`.
+
 ## Parameters
 
 Both formats are supported: `--key=value` and `--key value`.
