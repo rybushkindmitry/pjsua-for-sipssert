@@ -1,0 +1,32 @@
+tasks:
+  # UAS: listens, answers, sends re-INVITE at 3s
+  - name: pjsua-uas
+    image: pjsua-test
+    daemon: true
+    args:
+      - "--mode=uas"
+      - "--port=15084"
+      - "--rtp-port=18900"
+      - "--tls-cert-file=/home/certs/cacert.pem"
+      - "--tls-privkey-file=/home/certs/cakey.pem"
+      - "--srtp=mandatory"
+      - "--srtp-secure=0"
+      - "--duration=10"
+      - "--tolerance=0"
+      - "--reinvite-by=uas"
+      - "--reinvite-delay=3"
+
+  # UAC: connects, receives re-INVITE
+  - name: pjsua-uac
+    image: pjsua-test
+    require:
+      - { started: pjsua-uas }
+    args:
+      - "--mode=uac"
+      - "--proxy=127.0.0.1:15084"
+      - "--rtp-port=19900"
+      - "--tls-ca-file=/home/certs/cacert.pem"
+      - "--srtp=mandatory"
+      - "--srtp-secure=0"
+      - "--duration=10"
+      - "--tolerance=0"
