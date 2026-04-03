@@ -57,6 +57,8 @@ port: 5061            # local SIP/TLS port
 ip: 0.0.0.0           # bind to specific IP / interface
 rtp_port: 16000       # local RTP port (for host networking)
 dest_uri: ""          # full SIP URI (instead of proxy)
+ruri_user: test       # user part of Request-URI
+from_user: uac        # user part of From header
 duration: 10          # call duration, sec
 tolerance: 90         # min match % for PASS (echo validation)
 wait_timeout: 30      # timeout for incoming call, sec (uas-tls-client)
@@ -476,6 +478,8 @@ Both formats are supported: `--key=value` and `--key value`.
 | `--rtp-port PORT` | Local RTP port (for host networking) | auto |
 | `--duration SEC` | Call duration | 10 |
 | `--dest-uri URI` | Full SIP URI (instead of --proxy) | - |
+| `--ruri-user USER` | User part of Request-URI | `test` |
+| `--from-user USER` | User part of From header | `uac` / `uas` |
 
 ### TLS
 
