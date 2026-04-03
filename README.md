@@ -507,13 +507,56 @@ Both formats are supported: `--key=value` and `--key value`.
 | `--srtp` | `off`, `optional`, `mandatory` | `off` |
 | `--srtp-secure` | 0 = no requirements, 1 = TLS required, 2 = end-to-end | 0 |
 
-### Echo Validation and Timeouts
+### RTP Echo Validation
 
 | Parameter | Description | Default |
 |---|---|---|
 | `--tolerance` | Minimum match percentage for PASS | 90 |
 | `--wait-timeout` | Timeout for incoming call, sec (uas-tls-client) | 30 |
 | `--tls-wait` | Timeout for TLS connection, sec (uac-tls-server) | 10 |
+
+**How it works:**
+
+Both sides independently generate deterministic audio frames using `EchoValidatorPort`. Each frame is filled with a single constant PCM value from a pre-built table of **μ-law-stable values** (range 500–20000). The value cycles through the table for each new frame:
+
+```
+Frame 0: all 160 samples = -508
+Frame 1: all 160 samples =  508
+Frame 2: all 160 samples = -524
+...
+```
+
+Since both sides use the same generation algorithm starting from sequence 0, they produce identical frames.
+
+**Data path:**
+
+```
+EchoValidatorPort → conference bridge → G.711 encode → RTP → network →
+→ RTP → G.711 decode → conference bridge → EchoValidatorPort
+```
+
+The μ-law-stable values survive G.711 PCMU encode/decode without loss. However, the PJSUA2 conference bridge attenuates amplitude by approximately 3–12×.
+
+**Matching on receive:**
+
+1. Compute the **median** of all samples in the received frame
+2. If `|median| < 10` — frame is treated as silence (mismatch)
+3. Search the ring buffer (last 64 sent values) for a match: same **sign** and amplitude within proportional range (`|sent| / 12 ≤ |median| ≤ |sent|`)
+
+**Codec compatibility:**
+
+| Codec | Status | Notes |
+|---|---|---|
+| PCMU (G.711 μ-law) | Tested, ~98% match | Values are μ-law fixed points |
+| PCMA (G.711 A-law) | Expected to work | Same sign/amplitude preservation |
+| Speex, Opus, G.722 | Expected to work | May need wider tolerance range |
+| Codecs with DTX/silence suppression | May fail | Constant-fill frames can be treated as silence |
+
+**Practical notes:**
+- `--tolerance=0` disables validation (only checks call establishment)
+- `--tolerance=90` (default) — recommended for pjsua↔pjsua and OpenSIPS relay tests
+- First 2–3 frames may mismatch due to call setup latency (ring buffer not yet populated)
+- If match rate is unexpectedly low, check for media manipulation (AGC, noise gate, transcoding) in the path
 
 ### BYE Control
 
