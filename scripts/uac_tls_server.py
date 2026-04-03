@@ -250,7 +250,8 @@ def main():
         # Create account bound to our TLS listener transport
         acfg = pj.AccountConfig()
         bind_addr = getattr(args, "bind_ip", "") or "0.0.0.0"
-        acfg.idUri = f"sip:uac@{bind_addr}:{args.listen_port};transport=tls"
+        from_user = getattr(args, "from_user", None) or "uac"
+        acfg.idUri = f"sip:{from_user}@{bind_addr}:{args.listen_port};transport=tls"
         acfg.regConfig.registrarUri = ""
         acfg.regConfig.registerOnAdd = False
         # Force account to use our TLS listener transport —

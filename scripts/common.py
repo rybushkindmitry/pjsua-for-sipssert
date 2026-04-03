@@ -586,6 +586,7 @@ class ConfigLoader:
             "srtp_secure": "srtp_secure",
             "dest_uri": "dest_uri",
             "ruri_user": "ruri_user",
+            "from_user": "from_user",
             "log_level": "log_level",
             "bye": "bye",
             "wait_bye": "wait_bye",
@@ -700,6 +701,8 @@ def add_common_args(parser: argparse.ArgumentParser):
                         help="Destination SIP URI")
     parser.add_argument("--ruri-user", default="test",
                         help="User part of Request-URI (default: test)")
+    parser.add_argument("--from-user", default=None,
+                        help="User part of From header (default: uac or uas depending on mode)")
 
     # Transport
     parser.add_argument("--transport", choices=["tls", "tcp", "udp"],

@@ -186,7 +186,8 @@ def main():
     acfg = pj.AccountConfig()
     bind_addr = getattr(args, "bind_ip", "") or "0.0.0.0"
     tp_param = get_transport_param(args)
-    acfg.idUri = f"sip:uas@{bind_addr}:{port}{tp_param}"
+    from_user = getattr(args, "from_user", None) or "uas"
+    acfg.idUri = f"sip:{from_user}@{bind_addr}:{port}{tp_param}"
     acfg.regConfig.registrarUri = ""
     acfg.regConfig.registerOnAdd = False
     acfg.sipConfig.transportId = transport_id

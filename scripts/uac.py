@@ -167,7 +167,8 @@ def main():
         proxy = getattr(args, "proxy", "") or f"127.0.0.1:{get_default_port(args)}"
         bind_addr = getattr(args, "bind_ip", "") or "0.0.0.0"
         tp_param = get_transport_param(args)
-        acfg.idUri = f"sip:uac@{bind_addr}{tp_param}"
+        from_user = getattr(args, "from_user", None) or "uac"
+        acfg.idUri = f"sip:{from_user}@{bind_addr}{tp_param}"
         acfg.regConfig.registrarUri = ""
         acfg.regConfig.registerOnAdd = False
         acfg.sipConfig.transportId = transport_id
