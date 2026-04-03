@@ -18,13 +18,13 @@ Docker-образ на базе PJSIP для тестирования SIP over T
 Dockerfile              — Alpine 3.20 + пакеты pjproject 2.14.1 + py3-yaml
 entrypoint.sh           — CLI-обёртка (режимы uac, uas, uas-tls-client, uac-tls-server)
 scripts/
-  common.py             — общий модуль: EchoValidatorPort, HeaderManager, ConfigLoader,
-                          add_common_args, configure_srtp/tls, safe_shutdown, safe_exit
+  common.py             — общий модуль: EchoValidatorPort, OptionsPingManager, HeaderManager,
+                          ConfigLoader, add_common_args, BYE/re-INVITE/OPTIONS helpers
   uac.py                — PJSUA2: SIP UAC + TLS client + echo-валидация + заголовки
   uas.py                — PJSUA2: SIP UAS + TLS server + echo-валидация + заголовки
   uas_tls_client.py     — PJSUA2: SIP UAS + TLS client + echo-валидация + заголовки
   uac_tls_server.py     — PJSUA2: SIP UAC + TLS server + echo-валидация + заголовки
-tests/                  — sipssert интеграционные тесты (9 сценариев)
+tests/                  — sipssert интеграционные тесты (14 сценариев)
   pjsua-standard-roles/ — стандартные роли uac + uas
   pjsua-tls-roles/      — развязка TLS-ролей: uac-tls-server + uas-tls-client
   pjsua-config-file/    — YAML-конфиг (--config)
@@ -34,6 +34,11 @@ tests/                  — sipssert интеграционные тесты (9 
   pjsua-headers-tls-roles/    — заголовки с развязкой TLS-ролей
   pjsua-udp-transport/  — UDP транспорт (--transport=udp)
   pjsua-tcp-transport/  — TCP транспорт (--transport=tcp)
+  pjsua-bye-from-uas/   — BYE от UAS стороны
+  pjsua-bye-none/       — без BYE
+  pjsua-reinvite-uac/   — re-INVITE от UAC
+  pjsua-reinvite-uas/   — re-INVITE от UAS
+  pjsua-options-ping/   — in-dialog OPTIONS ping
 ```
 
 ## Ключевые решения
@@ -43,6 +48,9 @@ tests/                  — sipssert интеграционные тесты (9 
 - **ConfigLoader** — загрузка YAML-конфига (`--config=FILE`); CLI-аргументы имеют приоритет; списки заголовков (`headers:`) объединяются (merge)
 - **HeaderManager** — управляет 8 типами проверок SIP-заголовков (set, expect, expect_not, expect_name_regex, expect_not_regex, expect_value, expect_value_regex, expect_count); поддерживает индексирование (Name[0], Name[-1]) и диапазоны count (N, N+, N-M)
 - **EchoValidatorPort** — кастомный `AudioMediaPort` для побайтового сравнения RTP/SRTP фреймов
+- **--bye=uac|uas|none** — контроль стороны отправки BYE; `--wait-bye` задаёт таймаут ожидания BYE от удалённой стороны
+- **--reinvite-by / --reinvite-delay** — отправка re-INVITE через заданные задержки; onCallMediaState переподключает EchoValidatorPort
+- **--options-ping / --options-auto-reply / --options-tolerance** — in-dialog OPTIONS keepalive с валидацией ответов; OptionsPingManager в common.py
 - **--transport** — параметр для выбора транспорта (tls, tcp, udp, default: tls); uac/uas поддерживают все 3; режимы с TLS-ролями всегда используют TLS. В TRANSPORT_MAP (entrypoint.sh) отображаются значения на порты и флаги.
 - **Probe INVITE** — uas-tls-client отправляет probe для сигнализации о TLS-готовности uac-tls-server
 - **transportId** — аккаунты привязаны к конкретным TLS-транспортам для корректной маршрутизации
