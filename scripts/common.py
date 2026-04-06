@@ -1055,7 +1055,7 @@ def schedule_bye(call, app, role: str):
     """
     bye = getattr(app.args, "bye", role)
     if bye == role:
-        duration = app.args.duration
+        duration = getattr(app.args, "duration", None) or 10
         print(f"Will send BYE in {duration}s.", file=sys.stderr)
         timer = threading.Timer(duration, _do_hangup, args=(call, app))
         timer.daemon = True
@@ -1087,8 +1087,8 @@ def wait_for_completion(app, role: str):
     Returns True if call completed normally, False if timed out.
     """
     bye = getattr(app.args, "bye", role)
-    duration = app.args.duration
-    wait_bye = getattr(app.args, "wait_bye", 30)
+    duration = getattr(app.args, "duration", None) or 10
+    wait_bye = getattr(app.args, "wait_bye", None) or 30
 
     if bye == role:
         # We send BYE — wait for duration + reasonable margin

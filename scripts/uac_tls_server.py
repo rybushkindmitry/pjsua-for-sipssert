@@ -28,6 +28,7 @@ sys.path.insert(0, "/scripts")
 
 from common import (
     add_common_args,
+    _apply_arg_defaults,
     init_endpoint,
     configure_srtp,
     create_transport,
@@ -206,6 +207,8 @@ def main():
     if getattr(args, "config", ""):
         config = ConfigLoader.load(args.config)
         ConfigLoader.merge(config, args)
+
+    _apply_arg_defaults(args)
 
     # Map --proxy to remote-host/port if remote-host not given explicitly
     if not args.remote_host and args.proxy:
